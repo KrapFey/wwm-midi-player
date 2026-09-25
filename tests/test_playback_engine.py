@@ -129,3 +129,102 @@ def test_transpose_shifts_sounded_notes_and_reported_events(tmp_path: Path) -> N
     assert synth.notes_on() == [48, 50]
     assert ("noteoff", 0, 48) in synth.calls
     assert reported == [48, 50]
+
+
+def _long_rest_midi(path: Path) -> str:
+    """One note, a 3-second rest, then another note (default 120 BPM: 480 ticks = 0.5s)."""
+    midi = mido.MidiFile(ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.Message("note_on", note=60, velocity=90, time=0))
+    track.append(mido.Message("note_off", note=60, velocity=0, time=48))
+    track.append(mido.Message("note_on", note=72, velocity=90, time=480 * 6))
+    track.append(mido.Message("note_off", note=72, velocity=0, time=48))
+    midi.tracks.append(track)
+    midi.save(path)
+    return str(path)
+
+
+def _start(engine: PlaybackEngine) -> threading.Thread:
+    thread = threading.Thread(target=engine.run, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_pause_freezes_position_immediately_even_mid_rest(tmp_path: Path) -> None:
+    import time
+    synth = FakeSynth()
+    engine = PlaybackEngine(_long_rest_midi(tmp_path / "rest.mid"), synth, is_audio=True)
+    thread = _start(engine)
+    time.sleep(0.4)
+    engine.toggle_pause()
+    paused_at = engine.elapsed_seconds()
+    assert 0.3 < paused_at < 0.55
+    time.sleep(0.5)
+    assert engine.elapsed_seconds() == paused_at  # no creeping while paused
+    engine.toggle_pause()
+    time.sleep(0.2)
+    assert paused_at + 0.1 < engine.elapsed_seconds() < paused_at + 0.35  # resumes from there
+    engine.stop()
+    thread.join(timeout=2)
+
+
+def test_pause_mid_rest_holds_back_the_next_note(tmp_path: Path) -> None:
+    import time
+    synth = FakeSynth()
+    engine = PlaybackEngine(_long_rest_midi(tmp_path / "rest.mid"), synth, is_audio=True)
+    thread = _start(engine)
+    time.sleep(0.3)
+    engine.toggle_pause()
+    time.sleep(3.2)  # past the second note's scheduled time (3.05s)
+    assert synth.notes_on() == [60]
+    engine.stop()
+    thread.join(timeout=2)
+
+
+def test_stop_mid_rest_returns_promptly(tmp_path: Path) -> None:
+    import time
+    engine = PlaybackEngine(_long_rest_midi(tmp_path / "rest.mid"), FakeSynth(), is_audio=True)
+    thread = _start(engine)
+    time.sleep(0.3)
+    stopped = time.perf_counter()
+    engine.stop()
+    thread.join(timeout=5)
+    assert time.perf_counter() - stopped < 0.15
+
+
+def test_clock_only_advances_once_loaded_and_reports_its_start(tmp_path: Path) -> None:
+    started: list[float] = []
+    engine = PlaybackEngine(_write_midi(tmp_path / "song.mid", [[60, 62]]), FakeSynth(),
+                            is_audio=True, start_offset=0.05,
+                            callbacks=PlaybackCallbacks(on_clock_started=started.append))
+    assert not engine.advancing  # not loaded yet: the position is frozen
+    engine.run()
+    assert started == [0.05]
+
+
+def test_paused_engine_does_not_advance(tmp_path: Path) -> None:
+    import time
+    engine = PlaybackEngine(_long_rest_midi(tmp_path / "rest.mid"), FakeSynth(), is_audio=True)
+    thread = _start(engine)
+    time.sleep(0.2)
+    assert engine.advancing
+    engine.toggle_pause()
+    assert not engine.advancing
+    engine.stop()
+    thread.join(timeout=2)
+
+
+def test_resume_continues_from_pause_position_immediately(tmp_path: Path) -> None:
+    import time
+    engine = PlaybackEngine(_long_rest_midi(tmp_path / "rest.mid"), FakeSynth(), is_audio=True)
+    thread = _start(engine)
+    time.sleep(0.3)
+    engine.toggle_pause()
+    paused_at = engine.elapsed_seconds()
+    time.sleep(0.8)
+    engine.toggle_pause()
+    # Read right away, before the playback thread has noticed the resume: the
+    # paused time must not be counted as played.
+    assert abs(engine.elapsed_seconds() - paused_at) < 0.01
+    engine.stop()
+    thread.join(timeout=2)

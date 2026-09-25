@@ -36,6 +36,9 @@ SYNTH_GAIN_DB: float = -6.0
 # well above what any real MIDI file needs concurrently.
 SYNTH_MAX_VOICES: int = 1024
 GAME_WINDOW_TITLE: str = "Where Winds Meet"
+# Longest single sleep while waiting for the next note: long rests are slept
+# in chunks this size so pause/stop take effect within it, not at the next note.
+MAX_SLEEP_SECONDS: float = 0.02
 
 
 def create_synth(soundfont: Path) -> tinysoundfont.Synth:
@@ -76,6 +79,9 @@ class PlaybackCallbacks:
         on_tracks: The tracks that produced notes (for a mute panel), once parsed.
         on_error: A user-facing error message; playback stops afterward.
         on_ended: The song finished on its own (not stopped/errored).
+        on_clock_started: Parsing is done and the song clock starts advancing,
+            from this position (start_offset) - until then the position is
+            frozen, so a UI should not animate it yet.
     """
 
     on_duration: Callable[[float], None] = field(default=_ignore)
@@ -83,6 +89,7 @@ class PlaybackCallbacks:
     on_tracks: Callable[[list[TrackSummary]], None] = field(default=_ignore)
     on_error: Callable[[str], None] = field(default=_ignore)
     on_ended: Callable[[], None] = field(default=_ignore)
+    on_clock_started: Callable[[float], None] = field(default=_ignore)
 
 
 class PlaybackEngine:
@@ -143,8 +150,22 @@ class PlaybackEngine:
         # until then elapsed_seconds() reports start_offset instead of
         # perf_counter() minus an unset (0.0) start time.
         self.__clock_started: bool = False
-        self.__last_song_time: float = start_offset
+        # The song position reported while paused or not yet started: the
+        # exact position at the moment toggle_pause() paused, else start_offset.
+        self.__frozen_position: float = start_offset
         self.__start_offset: float = start_offset
+
+    @property
+    def advancing(self) -> bool:
+        """Return whether elapsed_seconds() is currently moving forward.
+
+        False while the file is still loading (before the clock starts) and
+        while paused.
+
+        Returns:
+            True while the song clock is running.
+        """
+        return self.__clock_started and not self.__paused
 
     @property
     def paused(self) -> bool:
@@ -181,7 +202,7 @@ class PlaybackEngine:
             The current playback position in seconds.
         """
         if self.__paused or not self.__clock_started:
-            return self.__last_song_time
+            return self.__frozen_position
         return time.perf_counter() - self.__start_time
 
     def __add_note(self, synth: tinysoundfont.Synth|None, track: int, msg: mido.Message,
@@ -263,24 +284,45 @@ class PlaybackEngine:
                 self.__send_channel_volume(synth, channel)
             self.__sent_volume = self.__volume
 
-    def __wait_until(self, start_time: float, target_song_time: float) -> None:
-        """Sleep until target_song_time has elapsed since start_time.
+    def __hold_while_paused(self, synth: tinysoundfont.Synth|None) -> None:
+        """If paused, silence sounding notes and block until resumed or stopped.
 
-        Sleeps in one coarse chunk down to a small margin, then finishes with
-        short 1ms sleeps for accurate timing, instead of spin-sleeping in 1ms
-        steps for the entire wait (which wastes CPU on long rests and is
-        finer-grained than the OS timer can honor anyway).
+        Resuming is handled by toggle_pause(), which re-anchors the clock to
+        the exact paused position itself, so playback continues from where
+        the user paused no matter how long it takes this thread to notice.
 
         Args:
-            start_time: The perf_counter() timestamp playback started from.
+            synth: The shared audio synth, or None in WWM mode.
+        """
+        if not self.__paused:
+            return
+        if self.__is_audio and synth is not None:
+            for channel in range(16):
+                synth.control_change(channel, 123, 0)
+        while self.__paused and self.__running:
+            time.sleep(MAX_SLEEP_SECONDS)
+
+    def __wait_until(self, target_song_time: float, synth: tinysoundfont.Synth|None) -> None:
+        """Sleep until the song clock reaches target_song_time, honoring pause/stop.
+
+        Sleeps in chunks of at most MAX_SLEEP_SECONDS (so a pause or stop
+        during a long rest takes effect promptly instead of at the next note,
+        which also keeps seek - stop, then restart - responsive), finishing
+        with short 1ms sleeps for accurate timing. Reads __start_time fresh
+        each chunk, since a pause re-anchors it.
+
+        Args:
             target_song_time: The song-time offset (seconds) to wait until.
+            synth: The shared audio synth, or None in WWM mode.
         """
         fine_margin: float = 0.005
         while self.__running:
-            remaining: float = target_song_time - (time.perf_counter() - start_time)
+            self.__hold_while_paused(synth)
+            remaining: float = target_song_time - (time.perf_counter() - self.__start_time)
             if remaining <= 0:
                 return
-            time.sleep(remaining - fine_margin if remaining > fine_margin else 0.001)
+            chunk: float = remaining - fine_margin if remaining > fine_margin else 0.001
+            time.sleep(min(chunk, MAX_SLEEP_SECONDS))
 
     def run(self) -> None:
         """Play the file to the end (or until stop()), with chord grouping and tempo handling.
@@ -324,19 +366,12 @@ class PlaybackEngine:
             # seek target while fast-forwarding, instead of briefly reading 0.
             self.__start_time = time.perf_counter() - self.__start_offset
             self.__clock_started = True
+            self.__callbacks.on_clock_started(self.__start_offset)
             for pm in messages:
                 if not self.__running:
                     natural_end = False
                     break
-                if self.__paused:
-                    self.__last_song_time = current_song_time
-                    if self.__is_audio and synth is not None:
-                        for channel in range(16):
-                            synth.control_change(channel, 123, 0)
-                    pause_start: float = time.perf_counter()
-                    while self.__paused and self.__running:
-                        time.sleep(0.05)
-                    self.__start_time += (time.perf_counter() - pause_start)
+                self.__hold_while_paused(synth)
                 if pm.time > current_song_time:
                     # All messages accumulated so far share the tick that has
                     # already elapsed - flush them as one chord before waiting
@@ -350,7 +385,7 @@ class PlaybackEngine:
                         skipping = False
                         self.__start_time = time.perf_counter() - current_song_time
                     if not skipping:
-                        self.__wait_until(self.__start_time, current_song_time)
+                        self.__wait_until(current_song_time, synth)
                 msg: mido.Message = pm.message
                 if msg.type in ("note_on", "note_off"):
                     tick_events.append((pm.track, msg))
@@ -387,7 +422,17 @@ class PlaybackEngine:
         self.__running = False
 
     def toggle_pause(self) -> None:
-        """Pause or resume playback."""
+        """Pause or resume playback.
+
+        Pausing freezes the reported position at this exact moment (not when
+        the playback thread next notices). Resuming re-anchors the clock here
+        too, before clearing the flag, so the paused time is never counted as
+        played - not even for a read made before the playback thread wakes.
+        """
+        if self.__paused:
+            self.__start_time = time.perf_counter() - self.__frozen_position
+        else:
+            self.__frozen_position = self.elapsed_seconds()
         self.__paused = not self.__paused
 
     def set_volume(self, volume: int) -> None:

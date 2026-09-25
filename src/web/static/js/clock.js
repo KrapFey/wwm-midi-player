@@ -5,6 +5,7 @@
 
 export class Clock {
   constructor() {
+    this.version = 0;
     this.set({ position: 0, playing: false });
   }
 
@@ -12,6 +13,20 @@ export class Clock {
     this.base = position;
     this.playing = playing;
     this.at = performance.now();
+    this.version += 1;
+  }
+
+  /**
+   * Re-read the backend clock, unless a newer position arrived meanwhile.
+   *
+   * The request is an async round-trip: if the user seeks or the backend
+   * pushes a clock event while it's in flight, applying the (older) answer
+   * would snap the bar back to where it was.
+   */
+  async resync(fetchClock) {
+    const version = this.version;
+    const snapshot = await fetchClock();
+    if (this.version === version) this.set(snapshot);
   }
 
   /** Current position in seconds, capped at duration once one is known. */

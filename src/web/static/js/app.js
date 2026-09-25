@@ -626,8 +626,8 @@ async function init() {
   bindUi();
   refreshSkin();
   render();
-  clock.set(await api.get_clock());
-  setInterval(async () => clock.set(await api.get_clock()), CLOCK_RESYNC_MS);
+  await clock.resync(() => api.get_clock());
+  setInterval(() => clock.resync(() => api.get_clock()), CLOCK_RESYNC_MS);
   requestAnimationFrame(frame);
 }
 

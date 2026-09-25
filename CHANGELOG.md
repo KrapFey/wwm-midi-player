@@ -46,6 +46,10 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- Pausing now freezes the progress bar exactly where you paused (it used to keep creeping to the
+  next note, which could even still sound), and resuming continues from that exact spot.
+- Seeking by clicking the progress bar no longer makes the bar jump back and forth, and responds
+  instantly even during long rests; seeking while paused now stays paused.
 - The elapsed time and progress bar slowly drifting out of sync with actual playback on longer
   songs.
 - A corrupt or incomplete `keybindings.json` breaking WWM mode; missing or invalid entries now

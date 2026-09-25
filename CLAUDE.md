@@ -169,10 +169,21 @@ tests/                     pytest suite for the Python modules above
   once, lazily, since loading the SoundFont is the slow part.
 - Seeking restarts the engine with `start_offset`; `run()` fast-forwards through the message
   stream up to that point (still applying program/control changes, muting audible output) before
-  resuming real-time playback. Pause/resume adjusts `start_time` by the paused duration.
+  resuming real-time playback. Api keeps a pause across the restart (`Api.__restart_at`, also used
+  by transpose): the new engine is created already paused.
+- Pause/resume is exact: `toggle_pause()` records the position at the moment of pausing
+  (`__frozen_position`) and, on resume, re-anchors `__start_time` to it *before* clearing the flag,
+  so no read ever counts paused time as played. `__wait_until` sleeps in chunks of at most
+  `MAX_SLEEP_SECONDS` (20ms) and checks pause/stop each chunk, so a pause or stop mid-rest (and
+  therefore a seek, which stops the engine first) takes effect within 20ms, not at the next note.
 - `elapsed_seconds()` is the single source of truth for position (Api's `get_clock()` reads it);
-  it reports `start_offset` until `run()` has parsed the file and anchored its clock. After the
-  thread exits, `get_clock()` reports 0 (an errored engine's clock would keep counting).
+  it reports `start_offset` until `run()` has parsed the file and anchored its clock, and
+  `advancing` is False until then (so the page doesn't animate during loading) — the clock start
+  is reported via `on_clock_started`. After the thread exits, `get_clock()` reports 0 (an errored
+  engine's clock would keep counting). Api's engine callbacks ignore engines that have since been
+  replaced (a stopping engine can still report while `__stop_engine` joins it).
+- Page side: `js/clock.js#resync` drops a `get_clock()` answer if a newer position (a seek or a
+  pushed `clock` event) arrived while the request was in flight — otherwise it snaps the bar back.
 - `run()` wraps parsing and the playback loop in broad exception handlers, reporting failures via
   `on_error` (shown as a toast) instead of the thread dying silently.
 - `on_ended` fires only when a song finishes on its own and drives auto-advance (on a fresh

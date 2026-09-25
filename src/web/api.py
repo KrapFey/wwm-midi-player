@@ -176,7 +176,7 @@ class Api:
         engine: PlaybackEngine|None = self.__engine
         if engine is None or not self.__is_playing():
             return {"position": 0.0, "playing": False}
-        return {"position": engine.elapsed_seconds(), "playing": not engine.paused}
+        return {"position": engine.elapsed_seconds(), "playing": engine.advancing}
 
     @staticmethod
     def get_piano_layout() -> list[list]:
@@ -372,14 +372,17 @@ class Api:
                 self.__start()
 
     def seek(self, seconds: float) -> None:
-        """Restart the selected song at the given position, keeping mute/solo state.
+        """Restart the selected song at the given position, keeping mute/solo and pause.
+
+        Seeking while paused moves the position but stays paused, so you can
+        pick a spot and then press play.
 
         Args:
             seconds: The position to seek to.
         """
         with self.__lock:
             if self.__files and self.__current != -1:
-                self.__start(start_offset=max(0.0, float(seconds)))
+                self.__restart_at(max(0.0, float(seconds)))
 
     # --- Transpose ---------------------------------------------------------
 
@@ -406,11 +409,7 @@ class Api:
             else:
                 self.__transpose.pop(path, None)
             if index == self.__now_playing and self.__is_playing():
-                was_paused: bool = self.__engine.paused
-                self.__start(start_offset=self.__engine.elapsed_seconds())
-                if was_paused:
-                    self.__engine.toggle_pause()
-                    self.__emit_clock()
+                self.__restart_at(self.__engine.elapsed_seconds())
             self.__emit("details", self.__file_entry(path))
             return self.get_state()
 
@@ -714,11 +713,23 @@ class Api:
         self.__engine = None
         self.__thread = None
 
-    def __start(self, start_offset: float=0.0) -> None:
+    def __restart_at(self, position: float) -> None:
+        """Restart the selected song at position, staying paused if it was paused.
+
+        Args:
+            position: Seconds into the song to restart from.
+        """
+        paused: bool = self.__is_playing() and self.__engine.paused
+        self.__start(start_offset=position, paused=paused)
+
+    def __start(self, start_offset: float=0.0, paused: bool=False) -> None:
         """(Re)start playback of the selected song at start_offset.
 
         Args:
             start_offset: Seconds into the song to start from.
+            paused: Create the engine already paused (it still loads the song
+                and reports duration/notes/tracks, but sounds nothing until
+                resumed).
         """
         self.__stop_engine()
         synth: tinysoundfont.Synth|None = None
@@ -728,40 +739,67 @@ class Api:
                 self.__synth = self.__synth_factory(self.__soundfont)
             synth = self.__synth
         path: str = self.__files[self.__current]
+        # Filled right after construction: the callbacks need the engine to
+        # tell whether they're still the current one (see __callbacks_for).
+        holder: list[PlaybackEngine] = []
         engine: PlaybackEngine = PlaybackEngine(
             path, synth, self.__is_audio, start_offset, frozenset(self.__muted),
-            self.__callbacks_for(start_offset), transpose=self.__transpose.get(path, 0))
+            self.__callbacks_for(holder), transpose=self.__transpose.get(path, 0))
+        holder.append(engine)
         engine.set_volume(self.__volume)
+        if paused:
+            engine.toggle_pause()
         self.__engine = engine
         self.__now_playing = self.__current
         self.__thread = threading.Thread(target=engine.run, name="playback", daemon=True)
         self.__thread.start()
         self.__emit("state", self.get_state())
 
-    def __callbacks_for(self, start_offset: float) -> PlaybackCallbacks:
+    def __callbacks_for(self, holder: list[PlaybackEngine]) -> PlaybackCallbacks:
         """Build the engine callbacks that forward progress to the page.
 
+        Every callback first checks that its engine is still the current one:
+        an engine being replaced (e.g. by rapid seeks) can still report while
+        __stop_engine waits for it, and its stale position or notes must not
+        overwrite the new engine's on the page.
+
         Args:
-            start_offset: The position this engine starts at (for the clock event).
+            holder: Receives the engine right after it's constructed.
 
         Returns:
             The callbacks for a new engine.
         """
+        def current() -> bool:
+            return bool(holder) and holder[0] is self.__engine
+
         def on_duration(seconds: float) -> None:
+            if not current():
+                return
             self.__duration = seconds
             self.__emit("duration", {"seconds": seconds})
-            self.__emit("clock", {"position": start_offset, "playing": True})
+            # Still loading: show the start position, but don't animate yet.
+            self.__emit("clock", {"position": holder[0].elapsed_seconds(), "playing": False})
+
+        def on_clock_started(position: float) -> None:
+            if current():
+                self.__emit("clock", {"position": position, "playing": not holder[0].paused})
 
         def on_notes(events: list[NoteEvent]) -> None:
+            if not current():
+                return
             self.__emit("notes", {"notes": [[e.start, e.end, e.note, e.track, e.is_drum]
                                             for e in events]})
 
         def on_tracks(tracks: list[TrackSummary]) -> None:
+            if not current():
+                return
             self.__tracks = tracks
             self.__emit("tracks", {"tracks": [asdict(track) for track in tracks],
                                    "muted": sorted(self.__muted), "soloed": self.__soloed})
 
         def on_error(message: str) -> None:
+            if not current():
+                return
             self.__now_playing = -1
             self.__emit("error", {"message": message})
             self.__emit("clock", {"position": 0.0, "playing": False})
@@ -772,7 +810,8 @@ class Api:
             threading.Thread(target=self.__advance_after_end, daemon=True).start()
 
         return PlaybackCallbacks(on_duration=on_duration, on_notes=on_notes,
-                                 on_tracks=on_tracks, on_error=on_error, on_ended=on_ended)
+                                 on_tracks=on_tracks, on_error=on_error, on_ended=on_ended,
+                                 on_clock_started=on_clock_started)
 
     def __advance_after_end(self) -> None:
         """Advance after a song ends on its own, or go idle at the playlist's end."""

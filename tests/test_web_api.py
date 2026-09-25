@@ -344,3 +344,21 @@ def test_reveal_and_mini_player_go_through_shell(harness) -> None:
     api.toggle_mini_player()
     api.show_main_window()
     assert (api.shell.mini_open, api.shell.main_shown) == (False, 1)
+
+
+def test_seek_while_paused_stays_paused_at_the_new_position(harness) -> None:
+    api, events, picked, synth, tmp_path = harness
+    picked.append(_song(tmp_path / "a.mid", [[60] * 60]))
+    api.add_files()
+    api.play_index(0)
+    _wait_for(lambda: "duration" in _names(events))
+    api.play_pause()
+    heard = len(synth.notes)
+    api.seek(1.0)
+    _wait_for(lambda: api.get_clock()["position"] == 1.0)
+    time.sleep(0.3)
+    assert api.get_clock() == {"position": 1.0, "playing": False}
+    assert api.get_state()["paused"]
+    assert len(synth.notes) == heard  # nothing sounds while paused
+    clocks = [payload for name, payload in events if name == "clock"]
+    assert clocks[-1] == {"position": 1.0, "playing": False}  # page told it's paused
