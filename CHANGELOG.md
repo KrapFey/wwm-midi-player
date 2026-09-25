@@ -6,8 +6,15 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Skins**: pick the app's look in Settings → Skin; it applies live and is remembered between
+  launches. Ships with **Default** and **Cyberpunk**: a dark glass, sci-fi HUD look with
+  rounded cards, a glowing neon accent per category (blue playback, green volume, purple mode,
+  yellow solo, red alerts), segmented LED progress/volume bars, a telemetry grid and live
+  readouts (voices, notes/s, tracks, time) in the visualizer, playback/mode status chips, and
+  monospaced instrument-style numbers.
 - **Light theme**: a Dark/Light toggle in Settings that restyles the whole app live, and is
-  remembered between launches.
+  remembered between launches. (Dark-only skins like Cyberpunk keep your choice for when you
+  switch back.)
 - An empty-state message in the playlist when no songs are loaded.
 - A clear button in the song search box.
 - Scrollbars styled to match the active theme.

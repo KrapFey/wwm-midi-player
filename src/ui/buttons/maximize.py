@@ -7,7 +7,7 @@ from PySide6.QtGui import QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from ui.buttons.abstract import AbstractButton
-from utils.common import RADIUS_SM
+from utils.common import active_skin
 
 SIZE = QSize(28, 28)
 HOVER_BACKGROUND_ALPHA = 40
@@ -66,7 +66,8 @@ class MaximizeButton(AbstractButton):
         painter.setPen(Qt.PenStyle.NoPen)
         alpha: int = int(HOVER_BACKGROUND_ALPHA * self._hover_progress())
         painter.setBrush(self._background_color(alpha))
-        painter.drawRoundedRect(rect, RADIUS_SM, RADIUS_SM)
+        radius: int = active_skin().radius_sm
+        painter.drawRoundedRect(rect, radius, radius)
         pen: QPen = QPen(self._draw_color())
         pen.setWidth(2)
         painter.setPen(pen)

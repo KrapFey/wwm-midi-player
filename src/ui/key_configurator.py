@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from ui.buttons.key import KeyButton
 from ui.dialog_style import apply_dialog_theme
 from ui.key_catcher import KeyCatcher
-from utils.common import Colors, theme_bus
+from utils.common import Colors, active_skin, theme_bus
 from utils.wwm_macro import KeyManager
 
 
@@ -89,17 +89,18 @@ class KeyConfigurator(QDialog):
         """
         for octave, notes in self.__manager.bindings.items():
             group: QGroupBox = QGroupBox(f"{octave.title()} Octave")
+            radius: int = active_skin().radius_sm
             group.setStyleSheet(f"""
                 QGroupBox {{
                     background-color: {Colors.BACKGROUND_1.value.hex};
                     border: none;
-                    border-radius: 5px;
+                    border-radius: {radius}px;
                     margin-top: 10px;
                     padding: 10px;
                 }}
                 QGroupBox::title {{
                     background-color: {Colors.BACKGROUND_1.value.hex};
-                    border-radius: 5px;
+                    border-radius: {radius}px;
                     subcontrol-origin: margin;
                     subcontrol-position: top center;
                     padding: 4px 8px;

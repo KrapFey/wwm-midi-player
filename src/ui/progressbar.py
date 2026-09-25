@@ -15,7 +15,9 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QProgressBar, QWidget
 
 from ui.animation import AnimatedProgress
-from utils.common import Colors, theme_bus
+from ui.glow import draw_segmented_bar
+from utils.common import Colors, active_skin, theme_bus
+from utils.skins import Skin
 
 HIT_AREA_HEIGHT = 18
 TRACK_HEIGHT = 6
@@ -173,6 +175,8 @@ class ProgressBar(QProgressBar):
     def paintEvent(self, _event: QPaintEvent) -> None:
         """Paint the track, filled portion, and (if hovered) the thumb.
 
+        HUD skins draw the track as a segmented LED level bar instead.
+
         Args:
             _event: The Qt paint event; unused (paints based on internal state).
         """
@@ -181,15 +185,21 @@ class ProgressBar(QProgressBar):
         track: QRectF = self.__track_rect()
         radius: float = TRACK_HEIGHT / 2
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(Colors.BACKGROUND_2.value.hex))
-        painter.drawRoundedRect(track, radius, radius)
         fraction: float = self.__fill.value
-        if fraction > 0:
+        skin: Skin = active_skin()
+        if skin.hud:
+            draw_segmented_bar(painter, track, fraction,
+                               (Colors.ACCENT_1.value.qcolor, Colors.HIGHLIGHT.value.qcolor),
+                               Colors.BACKGROUND_2.value.qcolor, skin.neon_glow)
+        else:
+            painter.setBrush(QColor(Colors.BACKGROUND_2.value.hex))
+            painter.drawRoundedRect(track, radius, radius)
+        if fraction > 0 and not skin.hud:
             fill: QRectF = QRectF(track)
             fill.setWidth(track.width() * fraction)
             gradient: QLinearGradient = QLinearGradient(fill.topLeft(), fill.topRight())
             gradient.setColorAt(0.0, QColor(Colors.ACCENT_1.value.hex))
-            gradient.setColorAt(1.0, QColor("#C0A060"))
+            gradient.setColorAt(1.0, QColor(Colors.HIGHLIGHT.value.hex))
             painter.setBrush(QBrush(gradient))
             painter.drawRoundedRect(fill, radius, radius)
         if self.__thumb_reveal.value > 0:

@@ -1,18 +1,21 @@
-"""Tests for shared resource-path resolution, note coloring, and the theme palette switch."""
+"""Tests for shared resource-path resolution, note coloring, and the skin/theme palette switch."""
 
 from pathlib import Path
 
 import pytest
 
 from utils.common import (
-    CHANNEL_COLORS,
     Colors,
+    active_skin,
+    apply_skin,
     apply_theme,
     channel_color_hex,
+    current_skin_name,
     current_theme,
     note_color_hex,
     resource_path,
 )
+from utils.skins import CHANNEL_COLORS, SKINS
 
 
 @pytest.fixture(autouse=True)
@@ -74,6 +77,7 @@ def test_note_color_hex_drum_color_never_used_for_pitched_tracks() -> None:
 @pytest.fixture(autouse=True)
 def _reset_theme():
     yield
+    apply_skin("default")
     apply_theme("dark")
 
 
@@ -106,3 +110,44 @@ def test_apply_theme_leaves_invariant_members_unchanged() -> None:
 def test_apply_theme_keeps_qcolor_in_sync_with_hex() -> None:
     apply_theme("light")
     assert Colors.WHITE.value.qcolor.name().lower() == Colors.WHITE.value.hex.lower()
+
+
+def test_apply_theme_unknown_name_falls_back_to_dark() -> None:
+    apply_theme("neon-pink")
+    assert current_theme() == "dark"
+
+
+def test_apply_skin_unknown_name_falls_back_to_default() -> None:
+    apply_skin("does-not-exist")
+    assert current_skin_name() == "default"
+
+
+def test_apply_skin_recolors_every_member_from_skin_palette() -> None:
+    apply_skin("cyberpunk")
+    palette = SKINS["cyberpunk"].palettes["dark"]
+    for member in Colors:
+        assert member.value.hex == palette[member.name]
+
+
+def test_apply_skin_mutates_cached_qcolor_in_place() -> None:
+    # Widgets cache Colors.X.value.qcolor at construction time; a skin switch
+    # must update that same QColor object, not replace it.
+    cached = Colors.ACCENT_1.value.qcolor
+    apply_skin("cyberpunk")
+    assert cached is Colors.ACCENT_1.value.qcolor
+    assert cached.name().lower() == SKINS["cyberpunk"].palettes["dark"]["ACCENT_1"].lower()
+
+
+def test_dark_only_skin_renders_dark_but_keeps_light_preference() -> None:
+    apply_theme("light")
+    apply_skin("cyberpunk")
+    assert current_theme() == "light"
+    assert Colors.BACKGROUND.value.hex == SKINS["cyberpunk"].palettes["dark"]["BACKGROUND"]
+    apply_skin("default")
+    assert Colors.BACKGROUND.value.hex == SKINS["default"].palettes["light"]["BACKGROUND"]
+
+
+def test_note_colors_follow_active_skin() -> None:
+    apply_skin("cyberpunk")
+    assert channel_color_hex(0) == active_skin().note_colors[0]
+    assert note_color_hex(0, is_drum=True) == SKINS["cyberpunk"].note_colors[9]

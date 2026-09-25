@@ -50,15 +50,19 @@ from ui.viewer import Viewer
 from ui.visualizer import PianoVisualizer
 from utils.app_settings import AppSettings, load_settings, save_settings
 from utils.common import (
-    RADIUS_SM,
     RESIZE_MARGIN,
     SPACING_MD,
     SPACING_XS,
     Colors,
+    active_skin,
+    apply_skin,
     apply_theme,
+    current_skin_name,
     current_theme,
+    heading_font_qss,
     resource_path,
     theme_bus,
+    window_background_qss,
 )
 from utils.midi_timing import calculate_duration
 from utils.note_events import (
@@ -479,6 +483,7 @@ class Player(QMainWindow):
         nothing is actually playing yet at startup.
         """
         settings: AppSettings = load_settings()
+        apply_skin(settings.skin)
         apply_theme(settings.theme)
         self.__now_playing_bar.volume.setValue(settings.volume)
         self.__now_playing_bar.mode_toggle.setChecked(settings.is_audio_mode)
@@ -500,6 +505,7 @@ class Player(QMainWindow):
             playlist=list(self.__files),
             current_index=self.__current_index,
             theme=current_theme(),
+            skin=current_skin_name(),
         ))
 
     @Slot(str)
@@ -1039,9 +1045,13 @@ class Player(QMainWindow):
 
     def __style_menu_bar(self) -> None:
         """Apply theme-dependent colors to the menu bar and its dropdown menus."""
+        radius: int = active_skin().radius_sm
+        # Glass skins let the window backdrop show through the chrome.
+        background: str = ("transparent" if active_skin().glass
+                           else Colors.BACKGROUND.value.hex)
         self.__menu_bar.setStyleSheet(f"""
             QMenuBar {{
-                background-color: {Colors.BACKGROUND.value.hex};
+                background-color: {background};
                 color: {Colors.WHITE.value.hex};
                 padding: 2px 4px;
                 border: none;
@@ -1049,7 +1059,7 @@ class Player(QMainWindow):
             QMenuBar::item {{
                 background: transparent;
                 padding: 4px 10px;
-                border-radius: {RADIUS_SM}px;
+                border-radius: {radius}px;
             }}
             QMenuBar::item:selected {{ background-color: {Colors.BACKGROUND_2.value.hex}; }}
             QMenuBar::item:pressed {{ background-color: {Colors.ACCENT_1.value.hex}; }}
@@ -1057,10 +1067,10 @@ class Player(QMainWindow):
                 background-color: {Colors.BACKGROUND_1.value.hex};
                 color: {Colors.WHITE.value.hex};
                 border: 1px solid {Colors.BACKGROUND_2.value.hex};
-                border-radius: {RADIUS_SM}px;
+                border-radius: {radius}px;
                 padding: 4px;
             }}
-            QMenu::item {{ padding: 6px 24px 6px 12px; border-radius: {RADIUS_SM}px; }}
+            QMenu::item {{ padding: 6px 24px 6px 12px; border-radius: {radius}px; }}
             QMenu::item:selected {{ background-color: {Colors.ACCENT_1.value.hex}; }}
             QMenu::separator {{
                 height: 1px;
@@ -1127,6 +1137,7 @@ class Player(QMainWindow):
                 border: none;
                 border-bottom: 2px solid transparent;
                 padding: 4px 2px;
+                {heading_font_qss()}
             }}
             QPushButton:checked {{
                 color: {Colors.WHITE.value.hex};
@@ -1214,7 +1225,16 @@ class Player(QMainWindow):
         required for their background-color QSS to paint at all - without
         it, these regions (window margins, gaps between panels) would keep
         showing Qt's default palette instead of following the app's theme.
+
+        Glass skins scope the backdrop to the root by object name: a
+        selector-less declaration also cascades to every descendant, which
+        would each repaint their own copy of the gradient instead of letting
+        one continuous backdrop show through the transparent chrome.
         """
+        if active_skin().glass:
+            self.__root.setStyleSheet(f"QWidget#root {{ {window_background_qss()} }}")
+            self.__content_widget.setStyleSheet("QWidget#content { background: transparent; }")
+            return
         style: str = f"background-color: {Colors.BACKGROUND.value.hex};"
         self.__root.setStyleSheet(style)
         self.__content_widget.setStyleSheet(style)
@@ -1222,6 +1242,7 @@ class Player(QMainWindow):
     def __construct_layout(self) -> None:
         """Construct layout."""
         self.__root: QWidget = QWidget()
+        self.__root.setObjectName("root")
         self.__root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setCentralWidget(self.__root)
         root_layout: QVBoxLayout = QVBoxLayout(self.__root)
@@ -1232,6 +1253,7 @@ class Player(QMainWindow):
         root_layout.addWidget(self.__title_bar)
         root_layout.addWidget(self.__menu_bar)
         self.__content_widget = QWidget()
+        self.__content_widget.setObjectName("content")
         self.__content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.__central_layout = QVBoxLayout(self.__content_widget)
         self.__central_layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)

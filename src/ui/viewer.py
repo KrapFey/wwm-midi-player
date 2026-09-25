@@ -5,7 +5,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QListWidget, QStackedLayout, QVBoxLayout, QWidget
 
 from ui.song_delegate import SongDelegate
-from utils.common import RADIUS_MD, SPACING_SM, Colors, scrollbar_qss, theme_bus
+from utils.common import (
+    SPACING_SM,
+    Colors,
+    active_skin,
+    panel_background_qss,
+    scrollbar_qss,
+    theme_bus,
+)
 
 EMPTY_ICON_POINT_SIZE: int = 32
 
@@ -25,7 +32,6 @@ class Viewer(QFrame):
         self.__widget: QListWidget = QListWidget(self)
         self.__delegate: SongDelegate = SongDelegate(self.__widget, accent, self.__widget)
         self.__widget.setItemDelegate(self.__delegate)
-        self.__radius: int = RADIUS_MD
         self.__empty_state: QWidget = self.__construct_empty_state()
         self.__stack: QStackedLayout = QStackedLayout()
         self.__stack.addWidget(self.__empty_state)
@@ -84,11 +90,13 @@ class Viewer(QFrame):
 
     def set_style(self) -> None:
         """Apply the panel background and border."""
+        # Scoped to Viewer itself: a bare QFrame selector would also box every
+        # child QLabel (QLabel is a QFrame), visible whenever BORDER contrasts.
         self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BACKGROUND_1.value.hex};
-                border-radius: {self.__radius}px;
-                border: 1px solid {Colors.BACKGROUND.value.hex};
+            Viewer {{
+                {panel_background_qss()}
+                border-radius: {active_skin().radius_md}px;
+                border: 1px solid {Colors.BORDER.value.hex};
             }}
         """)
         self.__widget.setStyleSheet(f"""

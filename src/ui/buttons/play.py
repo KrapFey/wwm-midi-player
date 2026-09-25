@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QWidget
 
 from ui.animation import AnimatedProgress
 from ui.buttons.abstract import AbstractButton
+from ui.glow import set_widget_glow
+from utils.common import Colors, active_skin, theme_bus
 
 PRIMARY_SIZE = QSize(52, 52)
 PRIMARY_BACKGROUND_ALPHA = 255
@@ -31,6 +33,13 @@ class PlayButton(AbstractButton):
         self.__morph: AnimatedProgress = AnimatedProgress(
             self, self.__on_morph_changed, MORPH_ANIMATION_DURATION_MS)
         self.change.connect(self.__toggle_state)
+        self.__sync_glow()
+        theme_bus.changed.connect(self.__sync_glow)
+
+    def __sync_glow(self) -> None:
+        """Glow in the accent color on neon-glow skins; no effect otherwise."""
+        glowing: bool = active_skin().neon_glow
+        set_widget_glow(self, Colors.ACCENT_1.value.qcolor if glowing else None)
 
     def __on_morph_changed(self, _value: float) -> None:
         """Repaint as the play/pause morph animation progresses.

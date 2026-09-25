@@ -9,7 +9,14 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QWidget
 from ui.buttons.close import CloseButton
 from ui.buttons.maximize import MaximizeButton
 from ui.buttons.minimize import MinimizeButton
-from utils.common import SPACING_XS, TITLEBAR_HEIGHT, Colors, theme_bus
+from utils.common import (
+    SPACING_XS,
+    TITLEBAR_HEIGHT,
+    Colors,
+    active_skin,
+    heading_font_qss,
+    theme_bus,
+)
 
 ICON_SIZE = QSize(16, 16)
 
@@ -54,9 +61,12 @@ class TitleBar(QWidget):
 
     def __style(self) -> None:
         """Apply theme-dependent colors to the bar background and title text."""
-        self.setStyleSheet(f"background-color: {Colors.BACKGROUND.value.hex};")
+        # Glass skins let the window backdrop show through the chrome.
+        background: str = "transparent" if active_skin().glass else Colors.BACKGROUND.value.hex
+        self.setStyleSheet(f"background-color: {background};")
         self.__title_label.setStyleSheet(
-            f"color: {Colors.WHITE.value.hex}; font-weight: bold; background: transparent;")
+            f"color: {Colors.WHITE.value.hex}; font-weight: bold; background: transparent; "
+            f"{heading_font_qss()}")
 
     def __wire_buttons(self, layout: QHBoxLayout) -> None:
         """Connect the minimize/maximize/close buttons to the window.

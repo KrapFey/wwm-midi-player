@@ -1,4 +1,4 @@
-"""Persisted app settings: volume, last Audio/WWM mode, last playlist and selection.
+"""Persisted app settings: volume, Audio/WWM mode, playlist/selection, theme, and skin.
 
 Mirrors utils.wwm_macro.KeyManager's keybindings.json persistence pattern:
 a JSON file resolved via utils.common.resource_path, loaded on startup with
@@ -25,7 +25,8 @@ class AppSettings:
         playlist: File paths of the last-loaded playlist.
         current_index: Index into playlist of the last-selected track, or
             -1 if none was selected.
-        theme: Active color theme, "dark" or "light".
+        theme: Dark/Light preference, "dark" or "light".
+        skin: Active skin, a key of utils.skins.SKINS.
     """
 
     volume: int = DEFAULT_VOLUME
@@ -33,6 +34,7 @@ class AppSettings:
     playlist: list[str] = field(default_factory=list)
     current_index: int = -1
     theme: str = "dark"
+    skin: str = "default"
 
 
 def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
@@ -51,7 +53,7 @@ def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
         with path.open(encoding="utf-8") as f:
             data: dict = json.load(f)
         known_fields: set[str] = {
-            "volume", "is_audio_mode", "playlist", "current_index", "theme"}
+            "volume", "is_audio_mode", "playlist", "current_index", "theme", "skin"}
         return AppSettings(**{key: value for key, value in data.items() if key in known_fields})
     except (OSError, json.JSONDecodeError, TypeError):
         return AppSettings()

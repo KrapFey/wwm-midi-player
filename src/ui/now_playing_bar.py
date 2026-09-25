@@ -9,16 +9,30 @@ from ui.buttons.play import PlayButton
 from ui.buttons.previous import PreviousButton
 from ui.buttons.repeat import RepeatButton
 from ui.buttons.shuffle import ShuffleButton
+from ui.glow import set_widget_glow
 from ui.progressbar import ProgressBar
 from ui.toggle_switch import ToggleSwitch
 from ui.volume_slider import Volume
-from utils.common import SPACING_MD, SPACING_SM, Colors, theme_bus
+from utils.common import (
+    SPACING_MD,
+    SPACING_SM,
+    SPACING_XS,
+    Colors,
+    active_skin,
+    heading_font_qss,
+    mono_font_qss,
+    panel_background_qss,
+    theme_bus,
+)
+from utils.skins import Skin
 
 # Fixed width shared by both the title/artist column and the volume/mode
 # column: long track/artist names elide instead of growing the left side,
 # and matching widths on both sides keep the transport/progress area
 # centered on the window rather than just centered within the leftover gap.
 SIDE_COLUMN_WIDTH: int = 220
+# HUD skins: tiny status indicator chips under the track title.
+STATUS_CHIP_HEIGHT: int = 18
 
 
 class NowPlayingBar(QFrame):
@@ -33,7 +47,12 @@ class NowPlayingBar(QFrame):
             parent: Optional parent widget.
         """
         super().__init__(parent=parent)
-        self.__caption_labels: list[QLabel] = []
+        # (label, original text): HUD skins show captions uppercased.
+        self.__caption_labels: list[tuple[QLabel, str]] = []
+        self.__is_playing: bool = False
+        self.__status_chip: QLabel = QLabel()
+        self.__mode_chip: QLabel = QLabel()
+        self.__status_row: QWidget = self.__construct_status_row()
         self.__title_label: QLabel = QLabel("No files loaded")
         self.__title_label.setFixedWidth(SIDE_COLUMN_WIDTH)
         self.__artist_label: QLabel = QLabel("")
@@ -51,14 +70,18 @@ class NowPlayingBar(QFrame):
         self.__previous_button.setToolTip("Previous (F9)")
         self.__play_button.setToolTip("Play (F10)")
         self.__next_button.setToolTip("Next (F11)")
-        self.__mode_toggle: ToggleSwitch = ToggleSwitch()
+        self.__mode_toggle: ToggleSwitch = ToggleSwitch(accent=Colors.MODE)
         self.__volume: Volume = Volume()
         self.__construct_layout()
         self.__progressbar.seek_requested.connect(self.seek_requested)
+        self.__play_button.change.connect(self.__on_play_state_changed)
+        self.__mode_toggle.toggled.connect(self.__style_status_chips)
         self.set_style()
         self.__style_labels()
+        self.__style_status_chips()
         theme_bus.changed.connect(self.set_style)
         theme_bus.changed.connect(self.__style_labels)
+        theme_bus.changed.connect(self.__style_status_chips)
 
     @property
     def play_button(self) -> PlayButton:
@@ -203,8 +226,64 @@ class NowPlayingBar(QFrame):
         layout.setSpacing(0)
         layout.addWidget(self.__title_label)
         layout.addWidget(self.__artist_label)
+        layout.addWidget(self.__status_row)
         layout.addStretch()
         return layout
+
+    def __construct_status_row(self) -> QWidget:
+        """Construct the HUD status chips row (playback state, Audio/WWM mode).
+
+        Returns:
+            The status row container; shown only on HUD skins.
+        """
+        row: QWidget = QWidget()
+        row.setStyleSheet("background: transparent;")
+        layout: QHBoxLayout = QHBoxLayout(row)
+        layout.setContentsMargins(0, SPACING_XS, 0, 0)
+        layout.setSpacing(SPACING_XS)
+        for chip in (self.__status_chip, self.__mode_chip):
+            chip.setFixedHeight(STATUS_CHIP_HEIGHT)
+            layout.addWidget(chip)
+        layout.addStretch()
+        return row
+
+    def __on_play_state_changed(self, is_playing: bool) -> None:
+        """Track playing/paused state for the HUD status chip.
+
+        Args:
+            is_playing: True while a track is playing, False when paused/stopped.
+        """
+        self.__is_playing = is_playing
+        self.__style_status_chips()
+
+    @staticmethod
+    def __style_chip(chip: QLabel, text: str, color: Colors) -> None:
+        """Style one glowing HUD status chip.
+
+        Args:
+            chip: The chip label to style.
+            text: The chip's text.
+            color: The chip's category color (text, border, and glow).
+        """
+        chip.setText(text)
+        chip.setStyleSheet(
+            f"color: {color.value.hex}; border: 1px solid {color.value.hex}; "
+            f"border-radius: {STATUS_CHIP_HEIGHT // 2}px; padding: 0px 8px; font-size: 10px; "
+            f"font-weight: bold; background: transparent; {mono_font_qss()}")
+        set_widget_glow(chip, color.value.qcolor)
+
+    def __style_status_chips(self) -> None:
+        """Refresh the HUD status chips, showing them only on HUD skins."""
+        visible: bool = active_skin().hud
+        self.__status_row.setVisible(visible)
+        if not visible:
+            return
+        if self.__is_playing:
+            self.__style_chip(self.__status_chip, "\u25cf PLAYING", Colors.GREEN)
+        else:
+            self.__style_chip(self.__status_chip, "\u25cf STANDBY", Colors.TEXT_MUTED)
+        mode: str = "AUDIO" if self.__mode_toggle.isChecked() else "WWM"
+        self.__style_chip(self.__mode_chip, mode, Colors.MODE)
 
     def __construct_transport_row(self) -> QHBoxLayout:
         """Construct the centered transport buttons row.
@@ -259,7 +338,7 @@ class NowPlayingBar(QFrame):
             The constructed caption label.
         """
         label: QLabel = QLabel(text)
-        self.__caption_labels.append(label)
+        self.__caption_labels.append((label, text))
         return label
 
     def __construct_right_column(self) -> QWidget:
@@ -310,24 +389,42 @@ class NowPlayingBar(QFrame):
 
     def set_style(self) -> None:
         """Apply the panel background and top divider."""
+        divider: Colors = Colors.BORDER if active_skin().glass else Colors.BACKGROUND_2
         self.setStyleSheet(f"""
             NowPlayingBar {{
-                background-color: {Colors.BACKGROUND_1.value.hex};
-                border-top: 1px solid {Colors.BACKGROUND_2.value.hex};
+                {panel_background_qss()}
+                border-top: 1px solid {divider.value.hex};
             }}
         """)
 
     def __style_labels(self) -> None:
-        """(Re)apply theme-dependent colors to every plain-text label in the bar."""
+        """(Re)apply skin-dependent colors/fonts to every plain-text label in the bar.
+
+        Neon skins give the title and time readout a soft glow; HUD skins set
+        the time in the monospaced instrument face and turn the captions into
+        small uppercase technical labels.
+        """
+        skin: Skin = active_skin()
         self.__title_label.setStyleSheet(
             f"font-weight: bold; font-size: 16px; background: transparent; "
-            f"color: {Colors.WHITE.value.hex};")
+            f"color: {Colors.WHITE.value.hex}; {heading_font_qss()}")
         self.__artist_label.setStyleSheet(
             f"color: {Colors.TEXT_MUTED.value.hex}; font-size: 12px; background: transparent;")
         self.__time_label.setStyleSheet(
-            f"font-weight: bold; background: transparent; color: {Colors.WHITE.value.hex};")
-        for label in self.__caption_labels:
-            label.setStyleSheet(f"color: {Colors.WHITE.value.hex}; background: transparent;")
+            f"font-weight: bold; background: transparent; color: {Colors.WHITE.value.hex}; "
+            f"{mono_font_qss()}")
+        glow: bool = skin.neon_glow
+        set_widget_glow(self.__title_label, Colors.ACCENT_1.value.qcolor if glow else None)
+        set_widget_glow(self.__time_label, Colors.HIGHLIGHT.value.qcolor if glow else None)
+        for label, text in self.__caption_labels:
+            if skin.hud:
+                label.setText(text.upper())
+                label.setStyleSheet(
+                    f"color: {Colors.TEXT_MUTED.value.hex}; background: transparent; "
+                    f"font-size: 10px; font-weight: bold; {mono_font_qss()}")
+            else:
+                label.setText(text)
+                label.setStyleSheet(f"color: {Colors.WHITE.value.hex}; background: transparent;")
 
 if __name__ == "__main__":
     ...

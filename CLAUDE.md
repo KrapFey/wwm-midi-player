@@ -62,12 +62,15 @@ src/ui/                    Widgets: buttons/ (play, next, previous, shuffle, rep
                             list), track_list_panel (per-track mute/solo rows), visualizer
                             (falling-note piano widget), toggle_switch (Audio/WWM mode, mute
                             rows), settings, key_configurator, key_catcher (captures a keypress
-                            for rebinding), search_box, toast, animation, special (credits),
-                            dialog_style
-src/utils/common.py        Colors/theme constants, dark/light palettes + apply_theme()/
-                            current_theme()/theme_bus (live theme switching), Singleton
-                            metaclass, resource_path() helper, CHANNEL_COLORS/note_color_hex()
-                            (per-track visualizer color palette)
+                            for rebinding), search_box, combo_box (palette-drawn chevron), glow (neon
+                            glow + segmented LED bar painting helpers), toast,
+                            animation, special (credits), dialog_style
+src/utils/common.py        Colors enum + apply_skin()/apply_theme()/active_skin()/theme_bus
+                            (live skin/theme switching, see "Skins & themes"), Singleton
+                            metaclass, resource_path() helper, channel_color_hex()/
+                            note_color_hex() (per-track visualizer color, from the active skin)
+src/utils/skins.py         Pure skin registry: Skin/PianoColors dataclasses, SKINS (Default,
+                            Cyberpunk), CHANNEL_COLORS (default note palette) (tested)
 src/utils/midi_timing.py   Pure tempo-map / tick-to-seconds duration math, TickClock (incremental
                             per-track tick→seconds converter shared by note_events.py and
                             playback_stream.py) (tested)
@@ -77,8 +80,8 @@ src/utils/note_events.py   build_note_events() — precomputes all note on/off e
 src/utils/playback_stream.py  build_playback_messages() — track-tagged, time-sorted message
                             stream that drives live playback (see "How playback works") (tested)
 src/utils/piano_layout.py  Pure 88-key keyboard geometry (white/black key positions) (tested)
-src/utils/app_settings.py  Persisted settings (volume, Audio/WWM mode, playlist, selection, theme) as
-                            JSON, loaded on launch and saved on close (tested)
+src/utils/app_settings.py  Persisted settings (volume, Audio/WWM mode, playlist, selection, theme,
+                            skin) as JSON, loaded on launch and saved on close (tested)
 src/utils/playlist.py      Pure next-track index resolution for shuffle/repeat (tested)
 src/utils/track_info.py    Track metadata extraction (artist/title from filename)
 src/utils/window_geometry.py  Pure resize-edge hit-testing math for the frameless window (tested)
@@ -159,6 +162,46 @@ genuinely different song, but persists across a seek-triggered restart of the sa
 (`Player.__reset_muted_tracks_if_song_changed` compares track indices, not just "did
 `__start_playback` run").
 
+## Skins & themes (src/utils/skins.py, src/utils/common.py)
+
+A `Skin` bundles everything visual that varies: a full `Colors` palette per variant
+(`"dark"`/`"light"`), the 16 note colors, piano key colors, corner radii (`radius_sm/md`), body/
+heading/mono font families, and three effect flags that gate all skin-specific rendering (so the
+Default skin, which sets none, renders exactly as it did before skins existed):
+
+- `neon_glow` — soft outer glows: `ui.glow.draw_glow()` halos for painted shapes (visualizer:
+  only *sounding* notes glow — haloing every falling bar blew the 33ms frame budget on dense
+  files), `ui.glow.set_widget_glow()` (a `QGraphicsDropShadowEffect`, which can draw outside the
+  widget's rect) for text, the play button, checked toggles, and status chips.
+- `glass` — `window_background_qss()` (lit radial backdrop on the root, scoped by object name —
+  a selector-less declaration would cascade and repaint the gradient per child) with transparent
+  title/menu bars, `panel_background_qss()` sheen on cards, the visualizer drawn as a rounded card.
+- `hud` — segmented LED progress/volume bars (`ui.glow.draw_segmented_bar()`; the volume slider
+  then becomes handle-less click/drag-to-set), a scrolling telemetry grid + live readout chips
+  (voices, notes/s, tracks, time) in the visualizer, PLAYING/STANDBY + AUDIO/WWM status chips in
+  the Now Playing bar, and uppercase monospaced captions.
+
+Category colors are `Colors` roles, not raw accents: `ACCENT_1` playback, `VOLUME` volume and
+track on/off switches, `MODE` the Audio/WWM toggle, `SOLO`, `RED`, with `HIGHLIGHT` as the shared
+gradient tail (`ToggleSwitch(accent=...)` picks a toggle's role). Skin (Settings → Skin) and Dark/Light preference
+(Settings → Theme) are independent: `Skin.resolve_variant()` renders a dark-only skin (Cyberpunk)
+dark while keeping the saved Light preference for when the user returns to a skin that has it;
+the Theme toggle is disabled for single-variant skins.
+
+`apply_skin()`/`apply_theme()` copy the active palette into the `Colors` members **in place**
+(including `.qcolor`, via `setRgba`), set the app font, then emit `theme_bus.changed`. Every
+widget restyles/repaints from its own `theme_bus.changed` handler, reading `Colors.X.value` and
+`active_skin()` fresh — never cache a hex string or radius at construction time (caching the
+shared `QColor` object is fine, since it's mutated in place). Unknown skin/theme names fall back
+to defaults, so a bad settings file never crashes startup. QSS `font-family` takes one family, so
+use `heading_font_qss()`/`mono_font_qss()` (which resolve a skin's fallback list against the
+installed fonts, cached) rather than writing family names into QSS directly.
+
+To add a skin: add an entry to `SKINS` in `utils/skins.py` with a palette defining **every**
+`Colors` member (enforced by `tests/test_skins.py`). Adding a `Colors` member means adding it to
+every skin's palettes. Panel QSS must use the widget's own class as selector (e.g. `Viewer {…}`),
+not `QFrame {…}`, or the rule cascades into child `QLabel`s (which are `QFrame`s).
+
 ## Key mapping model (src/utils/wwm_macro.py)
 
 Notes are described as scale degrees (`1`..`7`, plus sharps `#1/#4/#5` and flats `b3/b7`) across
@@ -170,7 +213,8 @@ defaults, so a missing/corrupt/partial file falls back per-entry instead of cras
 
 ## Settings persistence (src/utils/app_settings.py)
 
-`AppSettings` (volume, Audio/WWM mode, playlist file paths, last-selected index, theme) is loaded in
+`AppSettings` (volume, Audio/WWM mode, playlist file paths, last-selected index, theme, skin) is
+loaded in
 `Player.__load_saved_settings()` on launch and saved in `Player.__save_settings_to_disk()` on
 close, as JSON at `src/input/settings.json` (same pattern as `keybindings.json`). Restoring the
 last selection updates the header/highlights the row but deliberately does **not** mark it "now
@@ -182,7 +226,8 @@ to defaults safely (never crash on a bad user file).
 `pytest` (config in `pyproject.toml`, `pythonpath = ["src"]`) covers the pure-logic modules only
 — `utils/midi_timing.py`, `utils/note_events.py`, `utils/playback_stream.py`,
 `utils/piano_layout.py`, `utils/app_settings.py`, `utils/playlist.py`, `utils/track_info.py`,
-`utils/window_geometry.py`, `utils/wwm_macro.py` — since those don't touch Qt in ways that need
+`utils/skins.py`, `utils/window_geometry.py`, `utils/wwm_macro.py` — since those don't touch Qt
+in ways that need
 mocking (filesystem-touching ones are isolated via `tmp_path`/`monkeypatch.chdir`). There is
 deliberately no Qt-widget-level testing (no `pytest-qt`); GUI behavior is verified manually, or by
 scripting the real `Player` class directly (constructing it, driving its private methods, and

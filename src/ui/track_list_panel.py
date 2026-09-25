@@ -13,7 +13,15 @@ from PySide6.QtWidgets import (
 )
 
 from ui.toggle_switch import ToggleSwitch
-from utils.common import RADIUS_MD, SPACING_SM, Colors, note_color_hex, scrollbar_qss, theme_bus
+from utils.common import (
+    SPACING_SM,
+    Colors,
+    active_skin,
+    note_color_hex,
+    panel_background_qss,
+    scrollbar_qss,
+    theme_bus,
+)
 from utils.note_events import TrackSummary
 
 SWATCH_SIZE: int = 12
@@ -35,11 +43,9 @@ class _TrackRow(QWidget):
         """
         super().__init__(parent=parent)
         self.__index: int = track.index
-        swatch: QLabel = QLabel()
-        swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
-        swatch.setStyleSheet(
-            f"background-color: {note_color_hex(track.index, track.is_drum)}; "
-            f"border-radius: {SWATCH_SIZE // 2}px;")
+        self.__is_drum: bool = track.is_drum
+        self.__swatch: QLabel = QLabel()
+        self.__swatch.setFixedSize(SWATCH_SIZE, SWATCH_SIZE)
         self.__name_label: QLabel = QLabel(track.name)
         self.__solo_button: QPushButton = QPushButton("S")
         self.__solo_button.setCheckable(True)
@@ -53,19 +59,22 @@ class _TrackRow(QWidget):
         # block signals to push panel-driven state back into a row.
         self.__solo_button.clicked.connect(
             lambda: self.solo_toggled.emit(self.__index, self.__solo_button.isChecked()))
-        self.__switch: ToggleSwitch = ToggleSwitch()
+        self.__switch: ToggleSwitch = ToggleSwitch(accent=Colors.VOLUME)
         self.__switch.setChecked(True)
         self.__switch.clicked.connect(
             lambda: self.toggled.emit(self.__index, self.__switch.isChecked()))
         layout: QHBoxLayout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING_SM, SPACING_SM // 2, SPACING_SM, SPACING_SM // 2)
-        layout.addWidget(swatch)
+        layout.addWidget(self.__swatch)
         layout.addWidget(self.__name_label, stretch=1)
         layout.addWidget(self.__solo_button)
         layout.addWidget(self.__switch)
 
     def __style(self) -> None:
-        """Apply theme-dependent colors to the name label and solo button."""
+        """Apply skin-dependent colors to the swatch, name label, and solo button."""
+        self.__swatch.setStyleSheet(
+            f"background-color: {note_color_hex(self.__index, self.__is_drum)}; "
+            f"border-radius: {SWATCH_SIZE // 2}px;")
         self.__name_label.setStyleSheet(
             f"color: {Colors.WHITE.value.hex}; background: transparent;")
         self.__solo_button.setStyleSheet(f"""
@@ -77,7 +86,7 @@ class _TrackRow(QWidget):
                 font-weight: bold;
             }}
             QPushButton:checked {{
-                background-color: #E5A93E;
+                background-color: {Colors.SOLO.value.hex};
                 color: {Colors.BACKGROUND.value.hex};
             }}
         """)
@@ -165,11 +174,13 @@ class TrackListPanel(QFrame):
 
     def __set_style(self) -> None:
         """Apply the same panel chrome as Viewer for visual consistency."""
+        # Scoped to TrackListPanel itself: a bare QFrame selector would also box every
+        # child QLabel (QLabel is a QFrame), visible whenever BORDER contrasts.
         self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BACKGROUND_1.value.hex};
-                border-radius: {RADIUS_MD}px;
-                border: 1px solid {Colors.BACKGROUND.value.hex};
+            TrackListPanel {{
+                {panel_background_qss()}
+                border-radius: {active_skin().radius_md}px;
+                border: 1px solid {Colors.BORDER.value.hex};
             }}
         """)
         self.__widget.setStyleSheet(f"""

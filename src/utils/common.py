@@ -1,12 +1,16 @@
 """Common functionality used by different modules."""
 
+import functools
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont, QFontDatabase
+from PySide6.QtWidgets import QApplication
+
+from utils.skins import DEFAULT_SKIN, SKINS, VARIANTS, Skin, get_skin
 
 
 def resource_path(path: str) -> Path:
@@ -51,7 +55,9 @@ class Singleton(type):
             cls._instances[cls] = instance
         return cls._instances[cls]
 
-@dataclass
+# eq=False: members are compared by identity, so two Colors members that
+# happen to share a hex value never collapse into one Enum alias.
+@dataclass(eq=False)
 class Color:
     """Color representation class."""
 
@@ -67,52 +73,38 @@ class Color:
 class Colors(Enum):
     """Global colors enumeration.
 
-    WHITE/BACKGROUND/BACKGROUND_1/BACKGROUND_2/TEXT_MUTED are theme-dependent
-    (see _PALETTES/apply_theme below) - their stored value is mutated in
-    place when the theme switches, so every existing `Colors.X.value.hex`/
-    `.qcolor` read stays correct without call sites needing to change. The
-    remaining members are intentionally invariant across themes (either
-    already fine on both backgrounds, like ACCENT_1/RED, or meaning a true
-    black/white that must never flip, like BLACK's use as a universal
-    "darken on press" overlay tint).
+    Every member's value comes from the active skin's palette (see
+    utils.skins and apply_skin/apply_theme below). Switching skin or theme
+    mutates each member's `Color` - including its `.qcolor` - in place, so
+    every `Colors.X.value.hex`/`.qcolor` read, and every QColor reference a
+    widget cached at construction time, stays correct without call sites
+    needing to change. Populated from the default skin at import time.
     """
 
-    ACCENT_1 = Color("#2E7D32")
-    ACCENT_2 = Color("#8D6E63")
-    BACKGROUND = Color("#111111")
-    BACKGROUND_1 = Color("#101010")
-    BACKGROUND_2 = Color("#2A2A2A")
-    RED = Color("#FF0000")
-    GREEN = Color("#00FF00")
-    BLUE = Color("#0000FF")
-    BLACK = Color("#000000")
-    WHITE = Color("#FFFFFF")
-    TEXT_MUTED = Color("#999999")
+    ACCENT_1 = Color()
+    ACCENT_2 = Color()
+    HIGHLIGHT = Color()
+    VOLUME = Color()
+    MODE = Color()
+    SOLO = Color()
+    BACKGROUND = Color()
+    BACKGROUND_1 = Color()
+    BACKGROUND_2 = Color()
+    BORDER = Color()
+    RED = Color()
+    GREEN = Color()
+    BLUE = Color()
+    BLACK = Color()
+    WHITE = Color()
+    TEXT_MUTED = Color()
 
-# Theme-dependent members' values per theme name; members not listed here
-# (ACCENT_1, ACCENT_2, RED, GREEN, BLUE, BLACK) stay constant across themes.
-_PALETTES: dict[str, dict[str, str]] = {
-    "dark": {
-        "WHITE": "#FFFFFF",
-        "BACKGROUND": "#111111",
-        "BACKGROUND_1": "#101010",
-        "BACKGROUND_2": "#2A2A2A",
-        "TEXT_MUTED": "#999999",
-    },
-    "light": {
-        "WHITE": "#1A1A1A",
-        "BACKGROUND": "#F0F0F0",
-        "BACKGROUND_1": "#FFFFFF",
-        "BACKGROUND_2": "#D0D0D0",
-        "TEXT_MUTED": "#666666",
-    },
-}
-
+_current_skin: str = DEFAULT_SKIN
 _current_theme: str = "dark"
+_base_font: QFont|None = None
 
 
 class _ThemeBus(QObject):
-    """Signal bus notifying widgets to restyle after a theme switch."""
+    """Signal bus notifying widgets to restyle after a skin or theme switch."""
 
     changed: Signal = Signal()
 
@@ -121,7 +113,10 @@ theme_bus: _ThemeBus = _ThemeBus()
 
 
 def current_theme() -> str:
-    """Return the name of the currently active theme.
+    """Return the user's Dark/Light preference.
+
+    This is the preference, not necessarily what's rendered: a dark-only
+    skin renders dark regardless (see Skin.resolve_variant).
 
     Returns:
         "dark" or "light".
@@ -129,26 +124,169 @@ def current_theme() -> str:
     return _current_theme
 
 
-def apply_theme(name: str) -> None:
-    """Switch the active theme, mutating theme-dependent Colors members in place.
+def current_skin_name() -> str:
+    """Return the active skin's key in utils.skins.SKINS.
 
-    Every `Colors.X.value.hex`/`.qcolor` read across the codebase reflects
-    the new palette immediately after this call, since it's the same
-    `Color` instance being mutated rather than replaced. Emits
-    `theme_bus.changed` afterward so live widgets can restyle/repaint.
+    Returns:
+        The active skin's name, e.g. "default" or "cyberpunk".
+    """
+    return _current_skin
+
+
+def active_skin() -> Skin:
+    """Return the active skin.
+
+    Returns:
+        The active Skin.
+    """
+    return get_skin(_current_skin)
+
+
+def apply_theme(name: str) -> None:
+    """Set the Dark/Light preference and re-apply the active skin.
+
+    Unknown names fall back to "dark", so a bad settings file never crashes
+    startup.
 
     Args:
         name: The theme to switch to, "dark" or "light".
     """
     global _current_theme
-    palette: dict[str, str] = _PALETTES[name]
+    _current_theme = name if name in VARIANTS else "dark"
+    _apply_appearance()
+
+
+def apply_skin(name: str) -> None:
+    """Switch the active skin, keeping the user's Dark/Light preference.
+
+    Unknown names fall back to the default skin, so a bad settings file
+    never crashes startup.
+
+    Args:
+        name: A key of utils.skins.SKINS.
+    """
+    global _current_skin
+    _current_skin = name if name in SKINS else DEFAULT_SKIN
+    _apply_appearance()
+
+
+def _apply_font(skin: Skin) -> None:
+    """Set the app-wide font to the skin's preferred families, if an app exists.
+
+    Widgets without an explicit font family (every widget here - QSS only
+    ever sets size/weight) pick the new family up automatically.
+
+    Args:
+        skin: The skin being applied.
+    """
+    global _base_font
+    if QApplication.instance() is None:
+        return
+    if _base_font is None:
+        _base_font = QApplication.font()
+    font: QFont = QFont(_base_font)
+    if skin.font_families:
+        font.setFamilies(list(skin.font_families))
+    QApplication.setFont(font)
+
+
+def _apply_appearance() -> None:
+    """Copy the active skin/variant palette into Colors in place, then notify widgets."""
+    skin: Skin = active_skin()
+    palette: dict[str, str] = skin.palettes[skin.resolve_variant(_current_theme)]
     for member in Colors:
-        if member.name in palette:
-            hex_value: str = palette[member.name]
-            member.value.hex = hex_value
-            member.value.qcolor = QColor(hex_value)
-    _current_theme = name
+        hex_value: str = palette[member.name]
+        member.value.hex = hex_value
+        member.value.qcolor.setRgba(QColor(hex_value).rgba())
+    _apply_font(skin)
     theme_bus.changed.emit()
+
+
+_apply_appearance()
+
+
+@functools.cache
+def resolve_font_family(families: tuple[str, ...]) -> str:
+    """Return the first of families installed on this system, or "" if none are.
+
+    QSS font-family takes a single family (no fallback list), so a skin's
+    preference list is resolved against the installed fonts up front.
+    Cached, since installed fonts don't change while the app runs.
+
+    Args:
+        families: Preferred font families, in fallback order.
+
+    Returns:
+        The first installed family, or "" if none is installed.
+    """
+    installed: set[str] = set(QFontDatabase.families())
+    return next((family for family in families if family in installed), "")
+
+
+def _font_family_qss(families: tuple[str, ...]) -> str:
+    """Return a QSS font-family declaration for families, or "" to keep the inherited font.
+
+    Args:
+        families: Preferred font families, in fallback order.
+
+    Returns:
+        E.g. 'font-family: "Bahnschrift";', or "" if none is installed.
+    """
+    family: str = resolve_font_family(families)
+    return f'font-family: "{family}";' if family else ""
+
+
+def heading_font_qss() -> str:
+    """Return the active skin's heading font-family QSS, or "" for the body font.
+
+    Returns:
+        A QSS font-family declaration, or "".
+    """
+    return _font_family_qss(active_skin().heading_families)
+
+
+def mono_font_qss() -> str:
+    """Return the active skin's monospaced font-family QSS, or "" for the body font.
+
+    Returns:
+        A QSS font-family declaration, or "".
+    """
+    return _font_family_qss(active_skin().mono_families)
+
+
+def window_background_qss() -> str:
+    """Return QSS background declarations for the window/dialog backdrop.
+
+    Glass skins get a soft light source glowing down from the top center,
+    which the translucent-looking cards and transparent chrome sit on;
+    other skins get the flat BACKGROUND color.
+
+    Returns:
+        A QSS background declaration.
+    """
+    base: QColor = Colors.BACKGROUND.value.qcolor
+    if not active_skin().glass:
+        return f"background-color: {base.name()};"
+    return (f"background: qradialgradient(cx:0.5, cy:0, radius:1.1, fx:0.5, fy:0, "
+            f"stop:0 {base.lighter(190).name()}, stop:0.6 {base.name()}, "
+            f"stop:1 {base.darker(130).name()});")
+
+
+def panel_background_qss() -> str:
+    """Return QSS background declarations for a card/panel.
+
+    Glass skins get a subtle top-to-bottom sheen, reading as a lit,
+    translucent pane layered over the backdrop; other skins get the flat
+    BACKGROUND_1 color.
+
+    Returns:
+        A QSS background declaration.
+    """
+    base: QColor = Colors.BACKGROUND_1.value.qcolor
+    if not active_skin().glass:
+        return f"background-color: {base.name()};"
+    return (f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+            f"stop:0 {base.lighter(125).name()}, stop:1 {base.name()});")
 
 
 def scrollbar_qss() -> str:
@@ -187,20 +325,8 @@ def scrollbar_qss() -> str:
         }}
     """
 
-# Falling-note colors for the piano visualizer, one per MIDI channel (0-15).
-# Index 9 (the GM percussion channel) gets a distinct silver/grey so drum hits
-# read as visually different from pitched instruments.
-CHANNEL_COLORS: tuple[str, ...] = (
-    "#4FC3F7", "#81C784", "#FFB74D", "#E57373",
-    "#BA68C8", "#4DB6AC", "#FFD54F", "#7986CB",
-    "#F06292", "#B0BEC5",
-    "#AED581", "#FF8A65", "#9575CD", "#4DD0E1",
-    "#DCE775", "#F48FB1",
-)
-
-
 def channel_color_hex(channel: int) -> str:
-    """Return the hex color for a MIDI channel, wrapping defensively via modulo 16.
+    """Return the active skin's hex color for a MIDI channel, wrapping via modulo 16.
 
     Args:
         channel: MIDI channel number; wrapped via modulo 16 if out of range.
@@ -208,7 +334,7 @@ def channel_color_hex(channel: int) -> str:
     Returns:
         The channel's hex color string, e.g. "#4FC3F7".
     """
-    return CHANNEL_COLORS[channel % 16]
+    return active_skin().note_colors[channel % 16]
 
 # Index 9 is reserved exclusively for drum-channel notes (see note_color_hex)
 # so percussion always reads as visually distinct; pitched tracks cycle
@@ -233,13 +359,12 @@ def note_color_hex(track: int, is_drum: bool) -> str:
     Returns:
         The note's hex color string.
     """
+    colors: tuple[str, ...] = active_skin().note_colors
     if is_drum:
-        return CHANNEL_COLORS[9]
-    return CHANNEL_COLORS[_PITCHED_COLOR_INDICES[track % len(_PITCHED_COLOR_INDICES)]]
+        return colors[9]
+    return colors[_PITCHED_COLOR_INDICES[track % len(_PITCHED_COLOR_INDICES)]]
 
-# Shared corner-radius scale, applied consistently across panels/dialogs.
-RADIUS_SM: int = 6
-RADIUS_MD: int = 10
+# Corner radii are per-skin: see active_skin().radius_sm/radius_md.
 
 # Shared spacing scale, applied consistently for margins/spacing in layouts.
 SPACING_XS: int = 4

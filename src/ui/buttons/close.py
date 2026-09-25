@@ -7,7 +7,7 @@ from PySide6.QtGui import QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from ui.buttons.abstract import AbstractButton
-from utils.common import RADIUS_SM, Colors
+from utils.common import Colors, active_skin
 
 SIZE = QSize(28, 28)
 HOVER_BACKGROUND_ALPHA = 180
@@ -38,7 +38,8 @@ class CloseButton(AbstractButton):
         painter.setPen(Qt.PenStyle.NoPen)
         alpha: int = int(HOVER_BACKGROUND_ALPHA * self._hover_progress())
         painter.setBrush(self._background_color(alpha, base=Colors.RED.value.qcolor))
-        painter.drawRoundedRect(rect, RADIUS_SM, RADIUS_SM)
+        radius: int = active_skin().radius_sm
+        painter.drawRoundedRect(rect, radius, radius)
         glyph_base = Colors.WHITE.value.qcolor if self._hover_progress() > 0.5 else None
         pen: QPen = QPen(self._draw_color(glyph_base))
         pen.setWidth(2)

@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPolygonF
 from PySide6.QtWidgets import QListWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from ui.animation import AnimatedProgress
-from utils.common import Colors, theme_bus
+from utils.common import Colors, active_skin, theme_bus
 
 TITLE_ROLE: int = Qt.ItemDataRole.UserRole + 1
 ARTIST_ROLE: int = Qt.ItemDataRole.UserRole + 2
@@ -20,7 +20,6 @@ NOW_PLAYING_ALPHA = 45
 
 ROW_H_MARGIN = 4.0
 ROW_V_MARGIN = 3.0
-ROW_RADIUS = 6.0
 ROW_INNER_VPADDING = 8.0
 LINE_GAP = 2.0
 SELECTION_GUTTER_WIDTH = 8.0
@@ -44,13 +43,11 @@ class SongDelegate(QStyledItemDelegate):
         super().__init__(parent=parent)
         self.__view: QListWidget = view
         self.__accent_color: QColor = accent.value.qcolor
-        self.__title_font: QFont = QFont()
-        self.__title_font.setBold(True)
-        self.__title_font.setPixelSize(14)
-        self.__artist_font: QFont = QFont()
-        self.__artist_font.setPixelSize(12)
-        self.__title_metrics: QFontMetrics = QFontMetrics(self.__title_font)
-        self.__artist_metrics: QFontMetrics = QFontMetrics(self.__artist_font)
+        self.__title_font: QFont
+        self.__artist_font: QFont
+        self.__title_metrics: QFontMetrics
+        self.__artist_metrics: QFontMetrics
+        self.__build_fonts()
         self.__hovered_row: int = -1
         self.__pressed_row: int = -1
         self.__now_playing_row: int = -1
@@ -61,7 +58,27 @@ class SongDelegate(QStyledItemDelegate):
         view.viewport().setMouseTracking(True)
         view.entered.connect(self.__on_entered)
         view.viewport().installEventFilter(self)
-        theme_bus.changed.connect(view.viewport().update)
+        theme_bus.changed.connect(self.__on_theme_changed)
+
+    def __build_fonts(self) -> None:
+        """(Re)build the title/artist fonts from the current app font family.
+
+        QFont() snapshots the app font at construction, so a skin with its
+        own font family needs these rebuilt rather than set once.
+        """
+        self.__title_font = QFont()
+        self.__title_font.setBold(True)
+        self.__title_font.setPixelSize(14)
+        self.__artist_font = QFont()
+        self.__artist_font.setPixelSize(12)
+        self.__title_metrics = QFontMetrics(self.__title_font)
+        self.__artist_metrics = QFontMetrics(self.__artist_font)
+
+    def __on_theme_changed(self) -> None:
+        """Pick up a skin's font change, then re-lay out rows (heights may change) and repaint."""
+        self.__build_fonts()
+        self.__view.doItemsLayout()
+        self.__view.viewport().update()
 
     def set_now_playing_row(self, row: int) -> None:
         """Mark row as the now-playing track (or -1 for none) and repaint.
@@ -169,22 +186,23 @@ class SongDelegate(QStyledItemDelegate):
             ROW_H_MARGIN, ROW_V_MARGIN, -ROW_H_MARGIN, -ROW_V_MARGIN)
         row: int = index.row()
         is_now_playing: bool = row == self.__now_playing_row
+        radius: float = active_skin().radius_sm
         painter.setPen(Qt.PenStyle.NoPen)
         if is_now_playing:
             tint: QColor = QColor(Colors.ACCENT_1.value.qcolor)
             tint.setAlpha(NOW_PLAYING_ALPHA)
             painter.setBrush(tint)
-            painter.drawRoundedRect(background_rect, ROW_RADIUS, ROW_RADIUS)
+            painter.drawRoundedRect(background_rect, radius, radius)
         if row == self.__hovered_row and self.__hover.value > 0:
             hover_tint: QColor = QColor(Colors.BACKGROUND_2.value.qcolor)
             hover_tint.setAlpha(int(HOVER_MAX_ALPHA * self.__hover.value))
             painter.setBrush(hover_tint)
-            painter.drawRoundedRect(background_rect, ROW_RADIUS, ROW_RADIUS)
+            painter.drawRoundedRect(background_rect, radius, radius)
         if row == self.__pressed_row and self.__press.value > 0:
             press_tint: QColor = QColor(Colors.BLACK.value.qcolor)
             press_tint.setAlpha(int(PRESS_EXTRA_ALPHA * self.__press.value))
             painter.setBrush(press_tint)
-            painter.drawRoundedRect(background_rect, ROW_RADIUS, ROW_RADIUS)
+            painter.drawRoundedRect(background_rect, radius, radius)
         if option.state & QStyle.StateFlag.State_Selected:
             bar_rect: QRectF = QRectF(background_rect.left() + 2, background_rect.top() + 2,
                                       3, background_rect.height() - 4)

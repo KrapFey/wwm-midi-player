@@ -16,7 +16,10 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QAbstractButton, QWidget
 
-from utils.common import Colors, theme_bus
+from ui.glow import set_widget_glow
+from utils.common import Colors, active_skin, theme_bus
+
+DISABLED_OPACITY: float = 0.4
 
 
 class ToggleSwitch(QAbstractButton):
@@ -24,18 +27,21 @@ class ToggleSwitch(QAbstractButton):
 
     __position_changed: Signal = Signal(float)
 
-    def __init__(self, parent: QWidget|None=None) -> None:
+    def __init__(self, parent: QWidget|None=None, accent: Colors=Colors.ACCENT_1) -> None:
         """Initialize toggle.
 
         Args:
             parent: Optional parent widget.
+            accent: The track color while checked - lets each category of
+                toggle carry its own accent (e.g. Colors.MODE).
         """
         super().__init__(parent=parent)
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        # ACCENT_1 is invariant across themes so caching it is safe; BACKGROUND_2
-        # is theme-dependent and is read fresh in paintEvent instead (see below).
-        self.__checked_color: QColor = Colors.ACCENT_1.value.qcolor
+        # Caching the shared QColor is safe: skin/theme switches mutate it in
+        # place (see utils.common._apply_appearance), so it always reflects
+        # the active palette.
+        self.__checked_color: QColor = accent.value.qcolor
         self.__knob_color: QColor = QColor("#FFFFFF")
         self.__width: int = 45
         self.__height: int = int(self.__width * .52)
@@ -52,7 +58,14 @@ class ToggleSwitch(QAbstractButton):
         self.__animation.setDuration(250)
         self.__animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.toggled.connect(self.__start_animation)
+        self.toggled.connect(self.__sync_glow)
         theme_bus.changed.connect(self.update)
+        theme_bus.changed.connect(self.__sync_glow)
+
+    def __sync_glow(self) -> None:
+        """Glow in the accent color while checked, on neon-glow skins only."""
+        glowing: bool = self.isChecked() and active_skin().neon_glow
+        set_widget_glow(self, self.__checked_color if glowing else None)
 
     @Property(float, notify=__position_changed)
     def position(self) -> float:
@@ -107,11 +120,13 @@ class ToggleSwitch(QAbstractButton):
         """
         painter: QPainter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if not self.isEnabled():
+            painter.setOpacity(DISABLED_OPACITY)
         track_rect: QRect = QRect(0, 0, self.width(), self.height())
         unchecked_color: QColor = Colors.BACKGROUND_2.value.qcolor
+        radius: int = self.__width // 4
         painter.setBrush(self.__checked_color if self.isChecked() else unchecked_color)
         painter.setPen(Qt.PenStyle.NoPen)
-        radius: int = self.__width // 4
         painter.drawRoundedRect(track_rect, radius, radius)
         painter.setPen(QColor(0, 0, 0, 30))
         painter.setBrush(self.__knob_color)

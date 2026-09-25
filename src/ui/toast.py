@@ -11,7 +11,14 @@ from PySide6.QtWidgets import (
 )
 
 from ui.animation import AnimatedProgress
-from utils.common import RADIUS_MD, SPACING_MD, SPACING_SM, Colors, theme_bus
+from utils.common import (
+    SPACING_MD,
+    SPACING_SM,
+    Colors,
+    active_skin,
+    panel_background_qss,
+    theme_bus,
+)
 
 DISMISS_AFTER_MS = 5_000
 FADE_DURATION_MS = 200
@@ -144,9 +151,9 @@ class Toast(QFrame):
         """
         self.setStyleSheet(f"""
             QFrame {{
-                background-color: {Colors.BACKGROUND_1.value.hex};
+                {panel_background_qss()}
                 border: 1px solid {Colors.BACKGROUND_2.value.hex};
-                border-radius: {RADIUS_MD}px;
+                border-radius: {active_skin().radius_md}px;
             }}
         """)
 

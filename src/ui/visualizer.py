@@ -1,13 +1,25 @@
 """Synthesia-style falling-note piano visualizer panel."""
 
 import bisect
+import math
 from typing import override
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPaintEvent, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QWidget
 
-from utils.common import Colors, note_color_hex, theme_bus
+from ui.glow import draw_glow
+from utils.common import Colors, active_skin, note_color_hex, resolve_font_family, theme_bus
 from utils.note_events import NoteEvent
 from utils.piano_layout import (
     MIDI_NOTE_MAX,
@@ -17,6 +29,7 @@ from utils.piano_layout import (
     key_width,
     key_x_position,
 )
+from utils.skins import PianoColors, Skin
 
 KEYBOARD_HEIGHT_RATIO: float = 0.22
 LOOKAHEAD_SECONDS: float = 3.0
@@ -27,12 +40,19 @@ KEY_CORNER_RADIUS: float = 3.0
 BLACK_KEY_HEIGHT_RATIO: float = 0.62
 HIT_LINE_HEIGHT: float = 3.0
 
-# A piano's keys always look like a piano, regardless of app theme - these
-# are intentionally independent of Colors.WHITE/BLACK (which flip per theme).
-WHITE_KEY_TOP: str = "#FFFFFF"
-WHITE_KEY_BOTTOM: str = "#D8D8D8"
-BLACK_KEY_TOP: str = "#3A3A3A"
-BLACK_KEY_BOTTOM: str = "#000000"
+# HUD skins: telemetry grid rows every GRID_STEP_SECONDS (brighter on whole
+# seconds) scrolling with playback, plus octave columns at every C key.
+GRID_STEP_SECONDS: float = 0.5
+GRID_MINOR_ALPHA: int = 90
+GRID_MAJOR_ALPHA: int = 200
+# HUD skins: live readout chips along the top of the falling-notes area.
+TELEMETRY_MARGIN: float = 12.0
+TELEMETRY_SPACING: float = 8.0
+TELEMETRY_PADDING: float = 9.0
+TELEMETRY_FONT_PX: int = 10
+TELEMETRY_DOT_SIZE: float = 6.0
+TELEMETRY_CHIP_ALPHA: int = 200
+DENSITY_WINDOW_SECONDS: float = 1.0
 
 
 class PianoVisualizer(QWidget):
@@ -45,7 +65,6 @@ class PianoVisualizer(QWidget):
             parent: Optional parent widget.
         """
         super().__init__(parent=parent)
-        theme_bus.changed.connect(self.update)
         self.__events: list[NoteEvent] = []
         self.__starts: list[float] = []
         self.__max_note_duration: float = 0.0
@@ -54,7 +73,20 @@ class PianoVisualizer(QWidget):
         self.__muted_tracks: set[int] = set()
         self.__geometry_width: float = -1.0
         self.__key_geometry: dict[int, tuple[float, float]] = {}
+        self.__tracks: set[int] = set()
+        self.__telemetry_font: QFont = QFont()
+        self.__on_theme_changed()
+        theme_bus.changed.connect(self.__on_theme_changed)
         self.setAutoFillBackground(False)
+
+    def __on_theme_changed(self) -> None:
+        """Re-resolve the skin's telemetry font (once per switch, not per frame) and repaint."""
+        self.__telemetry_font = QFont()
+        family: str = resolve_font_family(active_skin().mono_families)
+        if family:
+            self.__telemetry_font.setFamily(family)
+        self.__telemetry_font.setPixelSize(TELEMETRY_FONT_PX)
+        self.update()
 
     def load_notes(self, events: list[NoteEvent], duration: float) -> None:
         """Replace the current note set for a newly-loaded track and reset scroll.
@@ -66,6 +98,7 @@ class PianoVisualizer(QWidget):
         self.__events = events
         self.__starts = [event.start for event in events]
         self.__max_note_duration = max((event.end - event.start for event in events), default=0.0)
+        self.__tracks = {event.track for event in events}
         self.__duration = duration
         self.__position = 0.0
         self.update()
@@ -93,6 +126,7 @@ class PianoVisualizer(QWidget):
         self.__events = []
         self.__starts = []
         self.__max_note_duration = 0.0
+        self.__tracks = set()
         self.__duration = 0.0
         self.__position = 0.0
         self.__muted_tracks = set()
@@ -145,7 +179,8 @@ class PianoVisualizer(QWidget):
                 visible.append(event)
         return visible
 
-    def __draw_falling_notes(self, painter: QPainter, fall_rect: QRectF) -> None:
+    def __draw_falling_notes(self, painter: QPainter, fall_rect: QRectF,
+                                   visible: list[NoteEvent]) -> None:
         """Draw one bar per visible note, colored by originating track.
 
         Bars are inset from the full key width so adjacent notes read as
@@ -155,9 +190,11 @@ class PianoVisualizer(QWidget):
         Args:
             painter: The active painter to draw with.
             fall_rect: The bounding rect of the falling-notes area.
+            visible: This frame's visible note events (see __visible_events).
         """
         pixels_per_second: float = fall_rect.height() / LOOKAHEAD_SECONDS
-        for event in self.__visible_events():
+        skin: Skin = active_skin()
+        for event in visible:
             note: int = clamp_note(event.note)
             x, width = self.__key_geometry[note]
             top: float = fall_rect.bottom() - (event.end - self.__position) * pixels_per_second
@@ -170,23 +207,32 @@ class PianoVisualizer(QWidget):
             margin: float = max(1.0, width * BAR_MARGIN_RATIO)
             bar_rect: QRectF = QRectF(x + margin, top, width - margin * 2, bottom - top)
             base_color: QColor = QColor(note_color_hex(event.track, event.is_drum))
+            radius: float = min(BAR_CORNER_RADIUS, skin.radius_sm, bar_rect.width() / 2)
+            # Only notes sounding right now glow - they "light up" as they hit
+            # the keys. Haloing every falling bar costs ~2x the whole frame on
+            # dense files (each halo re-fills the full bar area), blowing the
+            # 33ms frame budget.
+            if skin.neon_glow and event.start <= self.__position <= event.end:
+                draw_glow(painter, bar_rect, base_color, radius)
             gradient: QLinearGradient = QLinearGradient(bar_rect.topLeft(), bar_rect.bottomLeft())
             gradient.setColorAt(0.0, base_color.darker(125))
             gradient.setColorAt(1.0, base_color.lighter(135))
             painter.setPen(QPen(base_color.lighter(160), 1))
             painter.setBrush(QBrush(gradient))
-            radius: float = min(BAR_CORNER_RADIUS, bar_rect.width() / 2)
             painter.drawRoundedRect(bar_rect, radius, radius)
 
-    def __sounding_notes(self) -> dict[int, str]:
+    def __sounding_notes(self, visible: list[NoteEvent]) -> dict[int, str]:
         """Return clamped note numbers currently sounding, mapped to their track color.
+
+        Args:
+            visible: This frame's visible note events (see __visible_events).
 
         Returns:
             A mapping of clamped MIDI note number to its track's hex color
             for every note currently sounding.
         """
         sounding: dict[int, str] = {}
-        for event in self.__visible_events():
+        for event in visible:
             if event.start <= self.__position <= event.end:
                 sounding[clamp_note(event.note)] = note_color_hex(event.track, event.is_drum)
         return sounding
@@ -202,6 +248,8 @@ class PianoVisualizer(QWidget):
                                     fall_rect.width(), HIT_LINE_HEIGHT)
         # Copy rather than mutate the shared Colors.ACCENT_1 QColor instance in place.
         color: QColor = QColor(Colors.ACCENT_1.value.qcolor)
+        if active_skin().neon_glow:
+            draw_glow(painter, line_rect, color, 0.0)
         color.setAlpha(160)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
@@ -217,7 +265,10 @@ class PianoVisualizer(QWidget):
             sounding: Mapping of currently-sounding clamped note number to
                 its track's hex color, used to highlight active keys.
         """
-        painter.setPen(QPen(Colors.BACKGROUND.value.qcolor, 1))
+        skin: Skin = active_skin()
+        piano: PianoColors = skin.piano
+        radius: float = min(KEY_CORNER_RADIUS, skin.radius_sm)
+        painter.setPen(QPen(QColor(piano.border or Colors.BACKGROUND.value.hex), 1))
         for note in range(MIDI_NOTE_MIN, MIDI_NOTE_MAX + 1):
             if not is_white_key(note):
                 continue
@@ -229,10 +280,10 @@ class PianoVisualizer(QWidget):
                 gradient.setColorAt(0.0, glow.lighter(150))
                 gradient.setColorAt(1.0, glow)
             else:
-                gradient.setColorAt(0.0, QColor(WHITE_KEY_TOP))
-                gradient.setColorAt(1.0, QColor(WHITE_KEY_BOTTOM))
+                gradient.setColorAt(0.0, QColor(piano.white_top))
+                gradient.setColorAt(1.0, QColor(piano.white_bottom))
             painter.setBrush(QBrush(gradient))
-            painter.drawRoundedRect(rect, KEY_CORNER_RADIUS, KEY_CORNER_RADIUS)
+            painter.drawRoundedRect(rect, radius, radius)
 
     def __draw_black_keys(self, painter: QPainter, keyboard_rect: QRectF,
                                 sounding: dict[int, str]) -> None:
@@ -245,7 +296,15 @@ class PianoVisualizer(QWidget):
                 its track's hex color, used to highlight active keys.
         """
         black_height: float = keyboard_rect.height() * BLACK_KEY_HEIGHT_RATIO
-        painter.setPen(Qt.PenStyle.NoPen)
+        skin: Skin = active_skin()
+        piano: PianoColors = skin.piano
+        radius: float = min(KEY_CORNER_RADIUS, skin.radius_sm)
+        # Dark-keyed skins outline black keys too, or they vanish into equally
+        # dark white keys; the default white-keyed piano doesn't need it.
+        if piano.border:
+            painter.setPen(QPen(QColor(piano.border), 1))
+        else:
+            painter.setPen(Qt.PenStyle.NoPen)
         for note in range(MIDI_NOTE_MIN, MIDI_NOTE_MAX + 1):
             if is_white_key(note):
                 continue
@@ -257,21 +316,119 @@ class PianoVisualizer(QWidget):
                 gradient.setColorAt(0.0, glow.lighter(140))
                 gradient.setColorAt(1.0, glow.darker(110))
             else:
-                gradient.setColorAt(0.0, QColor(BLACK_KEY_TOP))
-                gradient.setColorAt(1.0, QColor(BLACK_KEY_BOTTOM))
+                gradient.setColorAt(0.0, QColor(piano.black_top))
+                gradient.setColorAt(1.0, QColor(piano.black_bottom))
             painter.setBrush(QBrush(gradient))
-            painter.drawRoundedRect(rect, KEY_CORNER_RADIUS, KEY_CORNER_RADIUS)
+            painter.drawRoundedRect(rect, radius, radius)
 
-    def __draw_keyboard(self, painter: QPainter, keyboard_rect: QRectF) -> None:
+    def __draw_keyboard(self, painter: QPainter, keyboard_rect: QRectF,
+                              sounding: dict[int, str]) -> None:
         """Draw white keys, then black keys on top, highlighting sounding notes.
 
         Args:
             painter: The active painter to draw with.
             keyboard_rect: The bounding rect of the keyboard area.
+            sounding: Mapping of currently-sounding clamped note number to
+                its track's hex color, used to highlight active keys.
         """
-        sounding: dict[int, str] = self.__sounding_notes()
         self.__draw_white_keys(painter, keyboard_rect, sounding)
         self.__draw_black_keys(painter, keyboard_rect, sounding)
+
+    def __draw_grid(self, painter: QPainter, fall_rect: QRectF) -> None:
+        """Draw the HUD telemetry grid behind the falling notes.
+
+        Columns mark each octave (every C key); rows mark time, scrolling
+        down with the notes, brighter on whole seconds.
+
+        Args:
+            painter: The active painter to draw with.
+            fall_rect: The bounding rect of the falling-notes area.
+        """
+        minor: QColor = QColor(Colors.BORDER.value.qcolor)
+        minor.setAlpha(GRID_MINOR_ALPHA)
+        major: QColor = QColor(Colors.BORDER.value.qcolor)
+        major.setAlpha(GRID_MAJOR_ALPHA)
+        painter.save()
+        painter.setPen(QPen(minor, 1))
+        for note in range(MIDI_NOTE_MIN, MIDI_NOTE_MAX + 1):
+            if note % 12 == 0:
+                x, _ = self.__key_geometry[note]
+                painter.drawLine(QPointF(x, fall_rect.top()), QPointF(x, fall_rect.bottom()))
+        pixels_per_second: float = fall_rect.height() / LOOKAHEAD_SECONDS
+        steps_per_second: int = round(1 / GRID_STEP_SECONDS)
+        first_step: int = math.ceil(self.__position / GRID_STEP_SECONDS)
+        last_step: int = math.floor((self.__position + LOOKAHEAD_SECONDS) / GRID_STEP_SECONDS)
+        for step in range(first_step, last_step + 1):
+            y: float = (fall_rect.bottom()
+                        - (step * GRID_STEP_SECONDS - self.__position) * pixels_per_second)
+            painter.setPen(QPen(major if step % steps_per_second == 0 else minor, 1))
+            painter.drawLine(QPointF(fall_rect.left(), y), QPointF(fall_rect.right(), y))
+        painter.restore()
+
+    def __telemetry_readouts(self, voices: int) -> tuple[tuple[str, str, Colors], ...]:
+        """Return the HUD's live readouts as (label, value, category color) triples.
+
+        Args:
+            voices: How many distinct keys are sounding right now.
+
+        Returns:
+            The readouts, in display order.
+        """
+        recent: int = (bisect.bisect_right(self.__starts, self.__position)
+                       - bisect.bisect_left(self.__starts,
+                                            self.__position - DENSITY_WINDOW_SECONDS))
+        minutes, seconds = divmod(max(0.0, self.__position), 60)
+        return (
+            ("VOICES", f"{voices:02d}", Colors.GREEN),
+            ("NOTES/S", f"{recent / DENSITY_WINDOW_SECONDS:04.1f}", Colors.SOLO),
+            ("TRACKS", f"{len(self.__tracks - self.__muted_tracks):02d}", Colors.MODE),
+            ("T+", f"{int(minutes):02d}:{seconds:04.1f}", Colors.ACCENT_1),
+        )
+
+    def __draw_telemetry(self, painter: QPainter, fall_rect: QRectF, voices: int) -> None:
+        """Draw the HUD's live readouts as a row of glass chips along the top of the fall area.
+
+        Each chip gets a small glowing status dot in its category color, a
+        muted technical label, and a monospaced value.
+
+        Args:
+            painter: The active painter to draw with.
+            fall_rect: The bounding rect of the falling-notes area.
+            voices: How many distinct keys are sounding right now.
+        """
+        painter.save()
+        painter.setFont(self.__telemetry_font)
+        metrics: QFontMetricsF = QFontMetricsF(self.__telemetry_font)
+        height: float = metrics.height() + TELEMETRY_PADDING
+        x: float = fall_rect.left() + TELEMETRY_MARGIN
+        y: float = fall_rect.top() + TELEMETRY_MARGIN
+        background: QColor = QColor(Colors.BACKGROUND_1.value.qcolor)
+        background.setAlpha(TELEMETRY_CHIP_ALPHA)
+        for label, value, color in self.__telemetry_readouts(voices):
+            label_width: float = metrics.horizontalAdvance(label)
+            value_width: float = metrics.horizontalAdvance(value)
+            width: float = (TELEMETRY_PADDING * 2 + TELEMETRY_DOT_SIZE + TELEMETRY_SPACING
+                            + label_width + TELEMETRY_SPACING / 2 + value_width)
+            chip: QRectF = QRectF(x, y, width, height)
+            painter.setPen(QPen(Colors.BORDER.value.qcolor, 1))
+            painter.setBrush(background)
+            painter.drawRoundedRect(chip, height / 2, height / 2)
+            dot: QRectF = QRectF(x + TELEMETRY_PADDING, chip.center().y() - TELEMETRY_DOT_SIZE / 2,
+                                 TELEMETRY_DOT_SIZE, TELEMETRY_DOT_SIZE)
+            draw_glow(painter, dot, color.value.qcolor, TELEMETRY_DOT_SIZE / 2)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color.value.qcolor)
+            painter.drawEllipse(dot)
+            text_x: float = dot.right() + TELEMETRY_SPACING
+            painter.setPen(Colors.TEXT_MUTED.value.qcolor)
+            painter.drawText(QRectF(text_x, y, label_width, height),
+                             int(Qt.AlignmentFlag.AlignVCenter), label)
+            painter.setPen(Colors.WHITE.value.qcolor)
+            painter.drawText(QRectF(text_x + label_width + TELEMETRY_SPACING / 2, y,
+                                    value_width, height),
+                             int(Qt.AlignmentFlag.AlignVCenter), value)
+            x += width + TELEMETRY_SPACING
+        painter.restore()
 
     @override
     def paintEvent(self, _event: QPaintEvent) -> None:
@@ -281,8 +438,17 @@ class PianoVisualizer(QWidget):
             _event: The Qt paint event; unused (paints based on internal state).
         """
         self.__ensure_key_geometry()
+        skin: Skin = active_skin()
         painter: QPainter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Glass skins draw the visualizer as a rounded, bordered card like
+        # every other panel; everything below is clipped to its shape.
+        card: QPainterPath|None = None
+        if skin.glass:
+            card = QPainterPath()
+            card.addRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5),
+                                skin.radius_md, skin.radius_md)
+            painter.setClipPath(card)
         background: QLinearGradient = QLinearGradient(0, 0, 0, self.height())
         background.setColorAt(0.0, QColor(Colors.BACKGROUND.value.hex))
         background.setColorAt(1.0, QColor(Colors.BACKGROUND_1.value.hex))
@@ -290,9 +456,20 @@ class PianoVisualizer(QWidget):
         keyboard_height: float = self.height() * KEYBOARD_HEIGHT_RATIO
         fall_rect: QRectF = QRectF(0, 0, self.width(), self.height() - keyboard_height)
         keyboard_rect: QRectF = QRectF(0, fall_rect.bottom(), self.width(), keyboard_height)
-        self.__draw_falling_notes(painter, fall_rect)
+        visible: list[NoteEvent] = self.__visible_events()
+        sounding: dict[int, str] = self.__sounding_notes(visible)
+        if skin.hud:
+            self.__draw_grid(painter, fall_rect)
+        self.__draw_falling_notes(painter, fall_rect, visible)
         self.__draw_hit_line(painter, fall_rect)
-        self.__draw_keyboard(painter, keyboard_rect)
+        self.__draw_keyboard(painter, keyboard_rect, sounding)
+        if skin.hud:
+            self.__draw_telemetry(painter, fall_rect, len(sounding))
+        if card is not None:
+            painter.setClipping(False)
+            painter.setPen(QPen(Colors.BORDER.value.qcolor, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(card)
         painter.end()
 
 if __name__ == "__main__":
