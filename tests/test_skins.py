@@ -2,15 +2,13 @@
 
 import pytest
 
-from utils.common import Colors
-from utils.skins import DEFAULT_SKIN, SKINS, VARIANTS, get_skin
+from utils.skins import DEFAULT_SKIN, PALETTE_KEYS, SKINS, VARIANTS, get_skin
 
 
 @pytest.mark.parametrize("name", list(SKINS))
-def test_every_palette_defines_every_color_member(name: str) -> None:
-    member_names = {member.name for member in Colors}
+def test_every_palette_defines_exactly_the_palette_keys(name: str) -> None:
     for variant, palette in SKINS[name].palettes.items():
-        assert set(palette) == member_names, (name, variant)
+        assert set(palette) == set(PALETTE_KEYS), (name, variant)
 
 
 @pytest.mark.parametrize("name", list(SKINS))

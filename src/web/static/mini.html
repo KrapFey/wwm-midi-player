@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WWM MIDI Player - Mini</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/mini.js"></script>
+</head>
+<body class="mini">
+  <div class="mini-player">
+    <!-- pywebview-drag-region: drag here to move the frameless window. -->
+    <header class="mini-header pywebview-drag-region">
+      <div class="np-info">
+        <div id="np-title" class="np-title">No files loaded</div>
+        <div id="np-artist" class="np-artist"></div>
+      </div>
+      <span id="chip-mode" class="chip chip-mode"></span>
+      <button id="expand" class="icon-button" title="Back to the full window">
+        <svg viewBox="0 0 24 24"><path class="stroke" d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg>
+      </button>
+      <button id="close" class="icon-button" title="Close mini player">
+        <svg viewBox="0 0 24 24"><path class="stroke" d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="mini-controls">
+      <button id="previous" class="transport-button" title="Previous (F9)">
+        <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM9.5 12L19 5v14z"/></svg>
+      </button>
+      <button id="play" class="transport-button primary" title="Play/Pause (F10)">
+        <svg viewBox="0 0 24 24"><path class="icon-play" d="M8 5v14l11-7z"/><path class="icon-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+      </button>
+      <button id="next" class="transport-button" title="Next (F11)">
+        <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM14.5 12L5 19V5z"/></svg>
+      </button>
+      <div id="progress" class="slider progress"><div class="slider-fill"></div><div class="slider-thumb"></div></div>
+      <span id="time" class="time">0:00 / 0:00</span>
+    </div>
+  </div>
+</body>
+</html>

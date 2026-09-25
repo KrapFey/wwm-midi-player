@@ -33,11 +33,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "pyside6>=6.10.2",
     "mido>=1.3.3",
     "keyboard>=0.13.5",
     "tinysoundfont>=0.3.7",
     "pywin32>=311",
+    "pywebview>=6.2",
 ]
 
 [project.optional-dependencies]
@@ -52,7 +52,7 @@ all = [
 ]
 
 [project.scripts]
-wwm-player = "app:main"
+wwm-player = "web_app:main"
 
 [project.urls]
 Repository = "https://github.com/KrapFey/wwm-midi-player"
@@ -105,7 +105,7 @@ ignore = [
 "tests/*" = ["D"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ui", "utils"]
+known-first-party = ["utils", "web"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.ruff.format]

@@ -1,0 +1,646 @@
+/*
+ * WWM MIDI Player web UI.
+ *
+ * Every color, radius, and font comes from the active skin (utils/skins.py),
+ * set as CSS variables on <html> by app.js#applySkin. Skin effect flags are
+ * data attributes on <html>: data-glass, data-hud, data-glow - so skin rules
+ * below are plain attribute selectors instead of per-widget code.
+ */
+
+:root {
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --side-column: 220px;
+  --glow-size: 12px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--white);
+  font: 13px var(--font-body);
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+svg { width: 18px; height: 18px; fill: currentColor; }
+svg .stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hidden { display: none !important; }
+
+/* ---- Layout -------------------------------------------------------------- */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 2fr;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--spacing-md);
+  height: 100%;
+  padding: var(--spacing-md) var(--spacing-md) 0;
+}
+
+.card {
+  background: var(--background-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--spacing-sm);
+  gap: var(--spacing-sm);
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+}
+
+.stage canvas { display: block; width: 100%; height: 100%; }
+
+.now-playing {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: var(--side-column) 1fr var(--side-column);
+  align-items: center;
+  gap: var(--spacing-md);
+  margin: 0 calc(-1 * var(--spacing-md));
+  padding: var(--spacing-md);
+  border-radius: 0;
+  border-width: 1px 0 0;
+  border-color: var(--background-2);
+}
+
+/* ---- Sidebar ------------------------------------------------------------- */
+
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; }
+
+.tabs { display: flex; gap: var(--spacing-xs); }
+.tab {
+  color: var(--text-muted);
+  padding: 4px 2px;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-heading);
+}
+.tab.active { color: var(--white); border-bottom-color: var(--accent-1); }
+
+.toolbar { display: flex; gap: 2px; }
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.icon-button:hover { color: var(--white); background: var(--background-2); }
+.icon-button.active { color: var(--accent-1); }
+
+.pane { display: flex; flex-direction: column; gap: var(--spacing-sm); min-height: 0; flex: 1; }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px var(--spacing-md);
+  background: var(--background-1);
+  border: 1px solid var(--background-2);
+  border-radius: 999px;
+  color: var(--white);
+}
+.search:focus-within { border-color: var(--accent-1); }
+.search svg { width: 14px; height: 14px; }
+.search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--white);
+  font: inherit;
+}
+.search input::placeholder { color: var(--text-muted); }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.list::-webkit-scrollbar { width: 10px; }
+.list::-webkit-scrollbar-thumb {
+  background: var(--background-2);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.list::-webkit-scrollbar-thumb:hover { background-color: var(--accent-1); }
+
+.song {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: var(--spacing-sm);
+  align-items: center;
+  margin: 3px 4px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+.song:hover { background: color-mix(in srgb, var(--background-2) 55%, transparent); }
+.song.selected::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent-1);
+}
+.song.playing { background: color-mix(in srgb, var(--accent-1) 18%, transparent); }
+.song .glyph { color: var(--accent-1); font-size: 10px; visibility: hidden; }
+.song.playing .glyph { visibility: visible; }
+.song .title { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.song.playing .title { color: var(--accent-1); }
+.song .artist { grid-column: 2 / 4; color: var(--text-muted); font-size: 12px; }
+.song .details {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font: 11px var(--font-mono);
+  white-space: nowrap;
+}
+.song.dragging { opacity: 0.4; }
+.song.drop-before { box-shadow: inset 0 2px 0 var(--accent-1); }
+.song.drop-after { box-shadow: inset 0 -2px 0 var(--accent-1); }
+
+/* How much of a song is inside WWM's playable range (see utils/song_analysis.py). */
+.range-badge {
+  --badge-color: var(--volume);
+  padding: 0 5px;
+  border: 1px solid var(--badge-color);
+  border-radius: 7px;
+  color: var(--badge-color);
+  font-size: 10px;
+  line-height: 13px;
+}
+.range-badge.fair, #range-fill.fair { --badge-color: var(--solo); }
+.range-badge.poor, #range-fill.poor { --badge-color: var(--red); }
+
+/* Tracks pane: per-song transpose + WWM range meter. */
+.song-tools {
+  display: grid;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--background-2);
+}
+.song-tools-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+.song-tools-row .caption { width: 76px; color: var(--text-muted); }
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--background-2);
+  border-radius: var(--radius-sm);
+}
+.stepper button { width: 26px; height: 24px; font-weight: 700; color: var(--text-muted); }
+.stepper button:hover:not(:disabled) { color: var(--white); background: var(--background-2); }
+.stepper output { min-width: 32px; text-align: center; font: 700 12px var(--font-mono); }
+.pill-button {
+  padding: 4px 12px;
+  border: 1px solid var(--background-2);
+  border-radius: 999px;
+  color: var(--white);
+  background: var(--background-1);
+}
+.pill-button:hover:not(:disabled) { border-color: var(--accent-1); }
+button:disabled { opacity: 0.4; cursor: default; }
+.range-meter { flex: 1; height: 6px; border-radius: 3px; background: var(--background-2); overflow: hidden; }
+#range-fill { --badge-color: var(--volume); height: 100%; background: var(--badge-color); transition: width 0.3s; }
+.range-value { width: 36px; text-align: right; font: 700 12px var(--font-mono); }
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  color: var(--text-muted);
+  text-align: center;
+}
+.empty-icon { font-size: 32px; }
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px var(--spacing-sm);
+}
+.track .swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.track .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.solo {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--background-2);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.solo.active { background: var(--solo); color: var(--background); }
+
+/* ---- Switch -------------------------------------------------------------- */
+
+.switch { position: relative; display: inline-block; width: 45px; height: 23px; flex: none; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 11px;
+  background: var(--background-2);
+  pointer-events: none;
+  transition: background 0.25s, box-shadow 0.25s;
+}
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.25s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.switch input:checked + span { background: var(--switch-color, var(--accent-1)); }
+.switch input:checked + span::after { transform: translateX(22px); }
+.switch input:disabled + span { opacity: 0.4; }
+.mode-switch { --switch-color: var(--mode); }
+.track .switch { --switch-color: var(--volume); }
+
+/* ---- Now Playing bar ----------------------------------------------------- */
+
+.np-info { min-width: 0; }
+.np-title {
+  font: 700 16px var(--font-heading);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.np-artist { color: var(--text-muted); font-size: 12px; }
+.status-chips { display: none; gap: var(--spacing-xs); margin-top: var(--spacing-xs); }
+.chip {
+  --chip-color: var(--text-muted);
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid var(--chip-color);
+  border-radius: 9px;
+  color: var(--chip-color);
+  font: 700 10px/16px var(--font-mono);
+}
+.chip.live { --chip-color: var(--green); }
+.chip-mode { --chip-color: var(--mode); }
+
+.np-center { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.transport { display: flex; justify-content: center; align-items: center; gap: var(--spacing-xs); }
+.transport-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--accent-1);
+  background: color-mix(in srgb, var(--accent-1) 14%, transparent);
+  transition: transform 0.15s, filter 0.15s, background 0.2s;
+}
+.transport-button:hover { transform: scale(1.08); filter: brightness(1.25); }
+.transport-button:active { transform: scale(0.92); }
+.transport-button.toggle { background: color-mix(in srgb, var(--accent-1) 6%, transparent); opacity: 0.4; }
+.transport-button.toggle.active { background: color-mix(in srgb, var(--accent-1) 43%, transparent); opacity: 1; }
+.transport-button.primary { width: 52px; height: 52px; background: var(--accent-1); color: #fff; }
+.transport-button.primary svg { width: 24px; height: 24px; }
+.transport-button .icon-pause, .transport-button.playing .icon-play { display: none; }
+.transport-button.playing .icon-pause { display: inline; }
+
+.progress-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+.time { font: 700 13px var(--font-mono); white-space: nowrap; }
+
+.np-side { display: flex; flex-direction: column; align-items: flex-end; gap: var(--spacing-sm); }
+.side-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+
+/* ---- Sliders (progress + volume) ----------------------------------------- */
+
+.slider {
+  --fill-from: var(--accent-1);
+  position: relative;
+  height: 18px;
+  cursor: pointer;
+  flex: 1;
+}
+.slider.volume { --fill-from: var(--volume); flex: none; width: 110px; }
+.slider::before, .slider-fill {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  height: 6px;
+}
+.slider::before { right: 0; border-radius: 3px; background: var(--background-2); }
+.slider-fill { width: calc(var(--value, 0) * 100%); }
+/* The paint lives on a pseudo-element so skins can mask it (hud segments)
+   while the unmasked .slider-fill carries the glow filter - a mask would
+   otherwise clip the element's own glow. */
+.slider-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--fill-from), var(--highlight));
+}
+.slider-thumb {
+  position: absolute;
+  top: 3px;
+  left: calc(var(--value, 0) * 100% - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--white);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.slider:hover .slider-thumb, .slider.dragging .slider-thumb { opacity: 1; }
+.seek-tip {
+  position: absolute;
+  bottom: 20px;
+  translate: -50% 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--background-2);
+  color: var(--white);
+  font: 11px var(--font-mono);
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* The volume handle is always shown; the progress thumb only on hover. */
+.slider.volume .slider-thumb { opacity: 1; top: 1px; left: calc(var(--value, 0) * 100% - 8px); width: 16px; height: 16px; }
+
+/* ---- Settings popover & toast -------------------------------------------- */
+
+.popover {
+  position: fixed;
+  z-index: 10;
+  translate: -100% 0;  /* app.js sets left to the button's right edge */
+  display: grid;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) 16px;
+  background: var(--background);
+  border-color: var(--background-2);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+}
+.popover-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.popover-row.disabled { color: var(--text-muted); }
+.theme-toggle { display: flex; align-items: center; gap: var(--spacing-sm); }
+select {
+  min-width: 140px;
+  padding: 5px 12px;
+  color: var(--white);
+  background: var(--background-1);
+  border: 1px solid var(--background-2);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  outline: none;
+}
+select:hover, select:focus { border-color: var(--accent-1); }
+
+.toast {
+  position: fixed;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  max-width: 360px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-color: var(--background-2);
+  white-space: pre-line;
+}
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--red);
+  font-weight: 700;
+}
+.toast.info .toast-icon { background: var(--accent-1); }
+
+.shortcuts {
+  max-width: 280px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.shortcuts b { color: var(--white); font-weight: 600; }
+
+/* ---- Context menu, modal, drop overlay ------------------------------------ */
+
+.menu {
+  position: fixed;
+  z-index: 15;
+  min-width: 190px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--background);
+  border-color: var(--background-2);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+}
+.menu li { padding: 6px 12px; border-radius: var(--radius-sm); cursor: default; }
+.menu li:hover { background: var(--accent-1); color: #fff; }
+.menu li.danger:hover { background: var(--red); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.5);
+}
+.modal-card { width: min(560px, 90vw); padding: 16px 20px; background: var(--background); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.modal-hint { color: var(--text-muted); margin: 6px 0 14px; }
+.modal-error { min-height: 18px; margin: 10px 0 0; color: var(--red); }
+.modal-footer { display: flex; justify-content: flex-end; }
+.keys-grid { display: grid; grid-template-columns: 70px repeat(7, 1fr); gap: 6px; align-items: center; }
+.keys-octave { color: var(--text-muted); }
+.keycap {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border: 1px solid var(--background-2);
+  border-radius: var(--radius-sm);
+  background: var(--background-1);
+}
+.keycap small { color: var(--text-muted); font-size: 10px; }
+.keycap b { font: 700 14px var(--font-mono); }
+.keycap:hover { border-color: var(--accent-1); }
+.keycap.capturing { border-color: var(--solo); color: var(--solo); }
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+  pointer-events: none;
+}
+.drop-overlay div {
+  padding: 28px 40px;
+  border: 2px dashed var(--accent-1);
+  border-radius: var(--radius-md);
+  font: 700 16px var(--font-heading);
+}
+
+/* ---- HUD telemetry (populated only on hud skins) -------------------------- */
+
+.telemetry {
+  position: absolute;
+  top: var(--spacing-md);
+  left: var(--spacing-md);
+  display: none;
+  gap: var(--spacing-sm);
+  pointer-events: none;
+}
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--background-1) 78%, transparent);
+  font: 10px var(--font-mono);
+  color: var(--text-muted);
+}
+.readout b { color: var(--white); font-weight: 400; }
+.readout i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--readout-color);
+  box-shadow: 0 0 8px var(--readout-color);
+}
+
+/* ======================================================================== */
+/* Skin effect: glass - lit backdrop, translucent blurred cards              */
+/* ======================================================================== */
+
+[data-glass] body {
+  background:
+    radial-gradient(ellipse 110% 70% at 50% 0%,
+      color-mix(in srgb, var(--background) 70%, var(--accent-1) 9%) 0%,
+      var(--background) 60%,
+      color-mix(in srgb, var(--background) 80%, #000) 100%);
+}
+[data-glass] .card {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 40%),
+    color-mix(in srgb, var(--background-1) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+[data-glass] .stage { border: 1px solid var(--border); border-radius: var(--radius-md); }
+[data-glass] .now-playing { margin: 0; margin-bottom: var(--spacing-md); border-width: 1px; border-color: var(--border); border-radius: var(--radius-md); }
+[data-glass] .search { background: color-mix(in srgb, var(--background) 60%, transparent); }
+
+/* ======================================================================== */
+/* Skin effect: glow - soft neon outer glows instead of flat color          */
+/* ======================================================================== */
+
+[data-glow] .np-title { text-shadow: 0 0 var(--glow-size) color-mix(in srgb, var(--accent-1) 70%, transparent); }
+[data-glow] .time { text-shadow: 0 0 var(--glow-size) color-mix(in srgb, var(--highlight) 70%, transparent); }
+[data-glow] .transport-button.primary { box-shadow: 0 0 18px color-mix(in srgb, var(--accent-1) 75%, transparent); }
+[data-glow] .switch input:checked + span { box-shadow: 0 0 var(--glow-size) var(--switch-color, var(--accent-1)); }
+[data-glow] .slider-fill { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--fill-from) 75%, transparent)); }
+[data-glow] .chip { box-shadow: 0 0 8px color-mix(in srgb, var(--chip-color) 55%, transparent); }
+[data-glow] .solo.active { box-shadow: 0 0 10px var(--solo); }
+[data-glow] .song.playing .title { text-shadow: 0 0 10px color-mix(in srgb, var(--accent-1) 60%, transparent); }
+
+/* ======================================================================== */
+/* Skin effect: hud - LED segments, status chips, telemetry, captions       */
+/* ======================================================================== */
+
+[data-hud] .status-chips { display: flex; }
+[data-hud] .telemetry { display: flex; }
+[data-hud] .caption {
+  color: var(--text-muted);
+  font: 700 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+/* Segmented LED bars: one mask slices both the unlit track and the lit fill,
+   and the lit gradient spans the whole bar so a segment's color encodes its
+   position. */
+[data-hud] .slider::before, [data-hud] .slider-fill::before {
+  border-radius: 1px;
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 6px);
+}
+[data-hud] .slider-fill::before { background-size: calc(100% / var(--value, 1)) 100%; }
+[data-hud] .slider.volume::before, [data-hud] .slider.volume .slider-fill { top: 5px; height: 8px; }
+[data-hud] .slider.volume .slider-thumb { display: none; }
+
+/* ======================================================================== */
+/* Mini player (mini.html): compact always-on-top controller                */
+/* ======================================================================== */
+
+body.mini { background: var(--background); }
+.mini-player {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  height: 100vh;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+[data-glass] body.mini .mini-player { background: linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 60%); }
+.mini-header { display: flex; align-items: center; gap: var(--spacing-sm); cursor: grab; }
+.mini-header .np-info { flex: 1; min-width: 0; }
+.mini-header .np-title { font-size: 14px; }
+.mini-header .icon-button { width: 24px; height: 24px; }
+.mini-controls { display: flex; align-items: center; gap: var(--spacing-sm); }
+.mini-controls .transport-button { width: 30px; height: 30px; }
+.mini-controls .transport-button.primary { width: 36px; height: 36px; }
+.mini-controls .transport-button.primary svg { width: 18px; height: 18px; }
+.mini-controls .slider { flex: 1; }
+.mini-controls .time { font-size: 11px; }

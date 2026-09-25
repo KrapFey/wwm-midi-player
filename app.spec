@@ -1,12 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 a = Analysis(
-    ['src/app.py'],
+    ['src/web_app.py'],
     pathex=[],
     binaries=[],
     datas=[
         ("src/input/logo.ico", "src/input"),
+        # pywebview resolves web_app.py's "web/static/..." pages against the
+        # bundle root (_internal), so the UI must land at exactly this path.
+        ("src/web/static", "web/static"),
         ("LICENSE", "."),
         ("TOH.sf2", "."),
     ],

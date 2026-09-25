@@ -1,7 +1,7 @@
 """Pure 88-key piano keyboard geometry (A0=21 .. C8=108).
 
-No Qt types here: callers convert to QRectF/QColor themselves, so this module
-stays unit-testable without a QApplication.
+Plain numbers only, so it's unit-testable; web.api.Api.get_piano_layout sends
+this geometry (normalized to width 1.0) to the page's canvas visualizer.
 """
 
 MIDI_NOTE_MIN: int = 21   # A0

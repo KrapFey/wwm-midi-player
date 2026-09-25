@@ -1,23 +1,27 @@
 # WWM MIDI Player
 
-A Windows desktop MIDI player built with PySide6. It plays MIDI files
-through a bundled SoundFont like a normal player, but its real purpose is
-**WWM mode**: it simulates keypresses into the game window for *Where Winds
-Meet*, mapped to the in-game Konghou instrument's key bindings, so your
-character performs the song live as it plays.
+A Windows desktop MIDI player with a web-based interface (HTML/CSS/JS in a
+native WebView2 window via [pywebview](https://pywebview.flowrl.com/), on a
+Python backend). It plays MIDI files through a bundled SoundFont like a
+normal player, but its real purpose is **WWM mode**: it simulates keypresses
+into the game window for *Where Winds Meet*, mapped to the in-game Konghou
+instrument's key bindings, so your character performs the song live as it
+plays.
 
-![Playlist and falling-note visualizer](docs/screenshots/playlist_and_visualizer.png)
+![Playlist and falling-note visualizer (Cyberpunk skin)](docs/screenshots/playlist_and_visualizer.png)
 
 ## Features
 
 ### Playlist
 
-Load multiple `.mid`/`.midi` files into a playlist, search/filter by title
-or artist, shuffle and repeat, and save/load playlists as `.m3u` files.
-Titles and artists are parsed from filenames in `Artist - Title.mid` form.
+Drop MIDI files or whole folders onto the window (or press **+**), search by
+title or artist, shuffle and repeat, and save/load playlists as `.m3u`
+files. Drag songs to reorder them; right-click a song to play it, show it in
+Explorer, or remove it. Each song shows its length, instrument-track count,
+and how much of it fits WWM's playable range. Titles and artists are parsed
+from filenames in `Artist - Title.mid` form.
 
-![Browsing the playlist](docs/screenshots/playlist_browsing.png)
-![Filtering the playlist by search](docs/screenshots/search_filter.png)
+![Right-click menu and per-song details](docs/screenshots/playlist_context_menu.png)
 
 ### Two playback modes
 
@@ -32,6 +36,24 @@ Titles and artists are parsed from filenames in `Artist - Title.mid` form.
 
 Switch between the two anytime with the toggle in the now-playing bar or
 the F8 hotkey.
+
+### Made for WWM
+
+The game's instrument covers only MIDI notes 48–83 (three octaves); notes
+outside that range get shifted by whole octaves to fit.
+
+- **Playable range view** — in WWM mode the visualizer dims the keys the
+  game can't play, fades out-of-range notes, and outlines the key each one
+  actually lands on.
+- **Per-song transpose** — shift a song up or down by semitones, or press
+  **Auto-fit** to pick the shift that keeps the most notes in range. It's
+  remembered per song and applies in both modes, so Audio mode previews
+  exactly what WWM mode will play.
+- **Mini player** — a compact always-on-top controller (**M**, or the button
+  next to Volume) to keep over the game instead of the full window.
+
+![WWM playable range and transpose](docs/screenshots/wwm_range_transpose.png)
+![Mini player](docs/screenshots/mini_player.png)
 
 ### Falling-note piano visualizer
 
@@ -48,49 +70,58 @@ mute toggle, and a solo button. Changes apply live during playback, in
 both Audio and WWM mode — mute the drums, solo the melody to learn it, etc.
 
 ![Track mute/solo panel](docs/screenshots/track_mute_solo.png)
-![Soloing a track mutes every other one](docs/screenshots/track_solo_active.png)
+
+### Skins
+
+Pick a look in Settings: **Default** (dark or light) or **Cyberpunk** — a
+dark-glass, neon sci-fi HUD with live readouts and LED-style meters.
+
+![Default skin](docs/screenshots/default_skin.png)
+![Default skin, light theme](docs/screenshots/light_theme.png)
+
+### Remappable WWM key bindings
+
+Settings → **WWM keys → Configure…** opens a per-note grid so you can
+rebind any scale degree/register to a different key, matching your own
+in-game control scheme instead of the default Konghou layout.
+
+![Settings](docs/screenshots/settings_dialog.png)
+![Key bindings: remap any note's key](docs/screenshots/key_configurator.png)
 
 ### Seek
 
 Click or drag anywhere on the progress bar to jump to that point in the
-track, in either playback mode.
+track; hovering shows the time under the cursor, and the visualizer follows
+while you drag.
 
-### Remappable WWM key bindings
+### Keyboard shortcuts
 
-Settings → Configure keybindings opens a per-note grid so you can rebind
-any scale degree/register to a different key, matching your own in-game
-control scheme instead of the default Konghou layout.
-
-![Settings dialog](docs/screenshots/settings_dialog.png)
-![Key Configurator: remap any note's key](docs/screenshots/key_configurator.png)
-
-### Global hotkeys
-
-F8/F9/F10/F11 work even when the game window has focus, so you don't need
-to alt-tab back to the player mid-song:
+F8–F11 are global — they work even while the game window has focus, so you
+don't need to alt-tab back to the player mid-song. The rest work in the
+player window.
 
 | Shortcut | Action |
 |----------|--------|
 | F8 | Switch Audio/WWM mode |
-| F9 | Previous track |
-| F10 | Play/Pause |
-| F11 | Next track |
+| F9 / F11 | Previous / next track |
+| F10 or Space | Play/Pause |
+| ← / → | Seek 5 seconds |
+| ↑ / ↓ | Volume |
+| Enter / Delete | Play / remove the selected song |
+| / | Search |
+| M | Mini player |
+| Ctrl+O / Ctrl+S | Add files / save playlist |
 
 ### Settings persistence
 
-Volume, Audio/WWM mode, and your playlist/selection are restored the next
-time you launch the app.
-
-### Special
-
-The **Special** menu has a short credits screen thanking contributors.
-
-![Special/credits dialog](docs/screenshots/special_dialog.png)
+Volume, Audio/WWM mode, skin and theme, your playlist/selection, and
+per-song transposes are restored the next time you launch the app.
 
 ## Requirements
 
-- Windows (the app uses `pywin32` for game-window messaging and has no
-  cross-platform fallback)
+- Windows 10 or 11 (the app uses `pywin32` for game-window messaging and the
+  Microsoft Edge WebView2 runtime for its interface — included with Windows
+  11 and current Windows 10)
 - Python 3.11–3.13, if running from source
 
 ## Installation
@@ -111,20 +142,20 @@ cd wwm-midi-player
 uv venv --seed
 .venv\Scripts\activate
 uv pip install -e .
-python src/app.py
+python src/web_app.py
 ```
 
 ## Usage
 
-1. **File → Open MIDI file** to add tracks to your playlist (or **Load
-   Playlist** to load a saved `.m3u`).
-2. Double-click a track to play it.
+1. Drop MIDI files or folders onto the window (or press **+**, or open a
+   saved `.m3u` playlist).
+2. Double-click a song to play it.
 3. Toggle **WWM / Audio** in the now-playing bar to choose whether playback
    simulates in-game keypresses (WWM mode requires *Where Winds Meet* to
    already be running) or plays through your speakers.
-4. Switch to the **Tracks** tab to mute or solo individual instruments.
-5. **Settings → Configure keybindings** to remap which keys each note sends
-   in WWM mode.
+4. In the **Tracks** tab, mute or solo instruments and transpose the song
+   into WWM's range.
+5. **Settings → WWM keys** to remap which keys each note sends in WWM mode.
 
 ## Contributing
 

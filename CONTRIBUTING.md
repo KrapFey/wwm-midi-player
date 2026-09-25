@@ -16,7 +16,8 @@ pre-commit install
 Run the app from source:
 
 ```bash
-python src/app.py
+python src/web_app.py      # the app (pywebview window)
+python src/web_preview.py  # the UI in a normal browser with a mock backend, for UI work
 ```
 
 ## Testing and linting
@@ -28,10 +29,13 @@ ruff format           # format
 pre-commit run --all-files
 ```
 
-`pytest` covers the pure-logic modules under `src/utils/` (MIDI timing math,
-playlist/track-event helpers, etc.) using small in-memory fixtures — no Qt
-or filesystem mocking needed for those. There's deliberately no
-Qt-widget-level testing; verify UI/GUI changes manually by running the app.
+`pytest` covers the Python side: the pure-logic modules under `src/utils/`
+(MIDI timing math, playlist/track-event helpers, song analysis, etc.), the
+playback engine (driven by a fake synth), and the JS-facing backend API in
+`src/web/api.py` (no browser needed). The HTML/CSS/JS in `src/web/static/`
+has no automated tests; verify UI changes by running the app or the preview
+(`src/web_preview.py`, whose URL parameters can set up specific views - see
+`src/web/static/js/mock.js`).
 
 `ruff` is configured strictly in `pyproject.toml` (docstrings required on
 every public function/class via pydocstyle's Google convention, plus
@@ -42,7 +46,7 @@ Run `ruff check` before opening a PR — CI and `pre-commit` both enforce it.
 
 1. Fork the repo and create a branch off `main`.
 2. Keep pull requests focused on one feature or fix at a time.
-3. Add or update tests for any change to `src/utils/`.
+3. Add or update tests for any change to `src/utils/` or `src/web/api.py`.
 4. Run `python -m pytest` and `ruff check` locally before pushing.
 5. Write commit messages in the form `type: Short description` (e.g.
    `feat: Add seek support to the progress bar`, `fix: Correct octave

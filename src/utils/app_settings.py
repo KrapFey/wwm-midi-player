@@ -1,7 +1,7 @@
 """Persisted app settings: volume, Audio/WWM mode, playlist/selection, theme, and skin.
 
 Mirrors utils.wwm_macro.KeyManager's keybindings.json persistence pattern:
-a JSON file resolved via utils.common.resource_path, loaded on startup with
+a JSON file resolved via utils.resources.resource_path, loaded on startup with
 a safe fallback to defaults, saved on close.
 """
 
@@ -9,7 +9,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from utils.common import resource_path
+from utils.resources import resource_path
 
 DEFAULT_VOLUME: int = 100
 SETTINGS_PATH: Path = resource_path("src/input/settings.json")
@@ -27,6 +27,8 @@ class AppSettings:
             -1 if none was selected.
         theme: Dark/Light preference, "dark" or "light".
         skin: Active skin, a key of utils.skins.SKINS.
+        transpose: Per-song semitone shift, keyed by file path; songs at 0
+            are omitted.
     """
 
     volume: int = DEFAULT_VOLUME
@@ -35,6 +37,7 @@ class AppSettings:
     current_index: int = -1
     theme: str = "dark"
     skin: str = "default"
+    transpose: dict[str, int] = field(default_factory=dict)
 
 
 def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
@@ -53,10 +56,28 @@ def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
         with path.open(encoding="utf-8") as f:
             data: dict = json.load(f)
         known_fields: set[str] = {
-            "volume", "is_audio_mode", "playlist", "current_index", "theme", "skin"}
-        return AppSettings(**{key: value for key, value in data.items() if key in known_fields})
+            "volume", "is_audio_mode", "playlist", "current_index", "theme", "skin", "transpose"}
+        settings: AppSettings = AppSettings(
+            **{key: value for key, value in data.items() if key in known_fields})
+        settings.transpose = _valid_transpose(settings.transpose)
+        return settings
     except (OSError, json.JSONDecodeError, TypeError):
         return AppSettings()
+
+
+def _valid_transpose(value: object) -> dict[str, int]:
+    """Keep only well-formed {path: int} entries from a loaded transpose map.
+
+    Args:
+        value: The raw "transpose" value from the settings file.
+
+    Returns:
+        The valid entries; {} if value isn't a mapping at all.
+    """
+    if not isinstance(value, dict):
+        return {}
+    return {path: shift for path, shift in value.items()
+            if isinstance(path, str) and isinstance(shift, int) and not isinstance(shift, bool)}
 
 
 def save_settings(settings: AppSettings, path: Path = SETTINGS_PATH) -> None:

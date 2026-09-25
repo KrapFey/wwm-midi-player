@@ -7,9 +7,8 @@ from pathlib import Path
 
 import win32api
 import win32con
-from PySide6.QtCore import Slot
 
-from utils.common import Singleton, resource_path
+from utils.resources import Singleton, resource_path
 
 NOTE_MIN: int = 48
 NOTE_MAX: int = 83
@@ -154,7 +153,6 @@ class KeyManager(metaclass=Singleton):
         """
         return self.__bindings
 
-    @Slot(str, str, str)
     def update_keybinding(self, octave: str, note: str, new_key: str) -> None:
         """Rebind one scale degree's key, keeping its sharp/flat variants in sync.
 
@@ -180,7 +178,6 @@ class KeyManager(metaclass=Singleton):
         self.__build_map()
         self.__save_keybindings()
 
-    @Slot()
     def reset_keybindings(self) -> None:
         """Reset keybindings."""
         self.__bindings = deepcopy(self.__default_bindings)

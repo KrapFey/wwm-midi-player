@@ -1,8 +1,9 @@
 """Skin registry: every visual parameter that differs between app skins.
 
-Pure data (no Qt), so it can be tested without a QApplication. A skin is
-applied via utils.common.apply_skin(), which copies the active palette into
-the shared Colors members and notifies widgets through theme_bus.
+Pure data, so it's unit-testable. web.api.Api.get_state() sends every skin to
+the page, where web/static/js/skin.js turns the active one into CSS variables
+(each PALETTE_KEYS entry becomes --lower-kebab-case, e.g. ACCENT_1 ->
+--accent-1) plus data-glass/data-hud/data-glow attributes.
 
 A skin's palettes are keyed by variant ("dark"/"light"). The user's
 Dark/Light preference is kept separately from the skin, so switching to a
@@ -14,6 +15,12 @@ from dataclasses import dataclass
 
 DEFAULT_SKIN: str = "default"
 VARIANTS: tuple[str, ...] = ("dark", "light")
+# Every palette must define exactly these colors (the CSS reads each one).
+PALETTE_KEYS: tuple[str, ...] = (
+    "ACCENT_1", "ACCENT_2", "HIGHLIGHT", "VOLUME", "MODE", "SOLO",
+    "BACKGROUND", "BACKGROUND_1", "BACKGROUND_2", "BORDER",
+    "RED", "GREEN", "BLUE", "BLACK", "WHITE", "TEXT_MUTED",
+)
 
 # Falling-note colors for the piano visualizer, one per MIDI channel (0-15).
 # Index 9 (the GM percussion channel) gets a distinct silver/grey so drum hits
@@ -52,15 +59,15 @@ class Skin:
 
     Attributes:
         display_name: Name shown in the Settings skin picker.
-        palettes: Variant name -> {Colors member name: hex}. Every palette
-            must define every Colors member.
+        palettes: Variant name -> {color name: hex}. Every palette must
+            define exactly PALETTE_KEYS.
         note_colors: 16 visualizer/track-swatch colors, index 9 reserved
-            for drums (see utils.common.note_color_hex).
+            for drums (see noteColor in web/static/js/color.js).
         piano: Visualizer keyboard colors.
         radius_sm: Corner radius for buttons, inputs, and list rows.
         radius_md: Corner radius for panels/cards.
         font_families: Preferred body font families in fallback order, or
-            empty for Qt's platform default.
+            empty for the system UI font.
         heading_families: Preferred font families for headings (song title,
             window title, tabs), or empty to use the body font.
         mono_families: Preferred monospaced families for numbers/readouts

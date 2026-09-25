@@ -49,3 +49,13 @@ def test_save_overwrites_existing_file(tmp_path: Path) -> None:
     save_settings(AppSettings(volume=10), path)
     save_settings(AppSettings(volume=99), path)
     assert load_settings(path).volume == 99
+
+
+def test_transpose_round_trips_and_drops_malformed_entries(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    save_settings(AppSettings(transpose={"a.mid": -5, "b.mid": 12}), path)
+    assert load_settings(path).transpose == {"a.mid": -5, "b.mid": 12}
+    path.write_text('{"transpose": {"a.mid": 3, "b.mid": "x", "c.mid": true}}', encoding="utf-8")
+    assert load_settings(path).transpose == {"a.mid": 3}
+    path.write_text('{"transpose": [1, 2]}', encoding="utf-8")
+    assert load_settings(path).transpose == {}

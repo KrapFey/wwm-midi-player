@@ -4,25 +4,43 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **New interface**: the app is now built with HTML/CSS/JS in a native WebView2 window
+  (pywebview) instead of Qt/PySide6, on the same Python playback backend. Run it with
+  `python src/web_app.py`; the installer builds this version. PySide6 is no longer a dependency.
+
 ### Added
 
-- **Skins**: pick the app's look in Settings → Skin; it applies live and is remembered between
+- Drag & drop MIDI files or whole folders onto the window; remove and drag-to-reorder songs;
+  right-click a song to play it, show it in Explorer, or remove it.
+- Keyboard shortcuts: Space, arrow keys (seek / volume), Enter, Delete, `/` (search), `M`
+  (mini player), Ctrl+O / Ctrl+S.
+- Seek preview: hover the progress bar for a time tooltip; dragging scrubs the visualizer live.
+- Song details in the playlist: length, track count, and how much of the song fits WWM's
+  playable range.
+- WWM playable range in the visualizer (WWM mode): unplayable keys dimmed, octave-folded notes
+  marked.
+- Per-song transpose with one-click auto-fit to WWM's range, remembered per song.
+- Always-on-top mini player to keep over the game.
+- **Skins**: pick the app's look in Settings; it applies live and is remembered between
   launches. Ships with **Default** and **Cyberpunk**: a dark glass, sci-fi HUD look with
   rounded cards, a glowing neon accent per category (blue playback, green volume, purple mode,
   yellow solo, red alerts), segmented LED progress/volume bars, a telemetry grid and live
-  readouts (voices, notes/s, tracks, time) in the visualizer, playback/mode status chips, and
-  monospaced instrument-style numbers.
-- **Light theme**: a Dark/Light toggle in Settings that restyles the whole app live, and is
-  remembered between launches. (Dark-only skins like Cyberpunk keep your choice for when you
-  switch back.)
+  readouts (voices, notes/s, tracks, range, time) in the visualizer, playback/mode status
+  chips, and monospaced instrument-style numbers.
+- **Light theme**: a Dark/Light toggle in Settings, remembered between launches. (Dark-only
+  skins like Cyberpunk keep your choice for when you switch back.)
 - An empty-state message in the playlist when no songs are loaded.
-- A clear button in the song search box.
-- Scrollbars styled to match the active theme.
+
+### Removed
+
+- The Special (credits) and About dialogs, which didn't carry over to the new interface.
 
 ### Fixed
 
-- The elapsed-time label and progress bar slowly drifting out of sync with actual playback
-  (and with the visualizer) on longer songs.
+- The elapsed time and progress bar slowly drifting out of sync with actual playback on longer
+  songs.
 - A corrupt or incomplete `keybindings.json` breaking WWM mode; missing or invalid entries now
   fall back to the default keybinds.
 - The `wwm-player` console command failing to start the app.
