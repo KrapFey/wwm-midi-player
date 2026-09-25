@@ -6,13 +6,15 @@ the page, where web/static/js/skin.js turns the active one into CSS variables
 --accent-1) plus data-glass/data-hud/data-glow attributes for shared effects
 and data-skin=<key> for skin-specific CSS.
 
-A skin's palettes are keyed by variant ("dark"/"light"). The user's
-Dark/Light preference is kept separately from the skin, so switching to a
-dark-only skin and back restores the user's original choice - see
-Skin.resolve_variant().
+A skin's palettes are keyed by variant ("dark"/"light"); a variant can also
+override the skin's note colors, piano, glow, and scanlines via
+Skin.variant_styles, and the page gets data-variant=<variant> for
+variant-specific CSS. The user's Dark/Light preference is kept separately
+from the skin, so switching to a single-variant skin and back restores the
+user's original choice - see Skin.resolve_variant().
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_SKIN: str = "default"
 VARIANTS: tuple[str, ...] = ("dark", "light")
@@ -55,6 +57,24 @@ class PianoColors:
 
 
 @dataclass(frozen=True, slots=True)
+class VariantStyle:
+    """Per-variant overrides of a skin's rendering (None keeps the skin's own).
+
+    Attributes:
+        note_colors: 16 note colors for this variant (neons that glow on
+            black wash out on white).
+        piano: Visualizer keyboard colors for this variant.
+        neon_glow: Whether this variant draws neon glows.
+        scanlines: Whether to draw visualizer scanlines in this variant.
+    """
+
+    note_colors: tuple[str, ...]|None = None
+    piano: PianoColors|None = None
+    neon_glow: bool|None = None
+    scanlines: bool|None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Skin:
     """One app skin.
 
@@ -86,6 +106,9 @@ class Skin:
         hud: Sci-fi instrumentation: segmented LED progress/volume bars, a
             telemetry grid and live readouts in the visualizer, status chips,
             and uppercase technical captions.
+        variant_styles: Variant name -> overrides of note_colors/piano/
+            neon_glow/scanlines for that variant (merged over the skin in
+            js/skin.js).
     """
 
     display_name: str
@@ -102,6 +125,7 @@ class Skin:
     hud: bool = False
     note_style: str = "gradient"
     scanlines: bool = False
+    variant_styles: dict[str, VariantStyle] = field(default_factory=dict)
 
     @property
     def variants(self) -> tuple[str, ...]:
@@ -122,6 +146,18 @@ class Skin:
             The variant to actually render with.
         """
         return preferred if preferred in self.palettes else self.variants[0]
+
+    def note_colors_for(self, variant: str) -> tuple[str, ...]:
+        """Return the note colors a variant renders with.
+
+        Args:
+            variant: A variant name, e.g. from resolve_variant().
+
+        Returns:
+            The variant's override if it has one, else the skin's note_colors.
+        """
+        style = self.variant_styles.get(variant)
+        return style.note_colors if style and style.note_colors else self.note_colors
 
 
 _DEFAULT_DARK: dict[str, str] = {
@@ -187,6 +223,35 @@ _NEON_GLASS_NOTE_COLORS: tuple[str, ...] = (
     "#60A5FA", "#FB7185",
 )
 
+# Neon Glass light - frosted white glass: cool grey backdrop, white cards,
+# slate text, and the same category hues deepened so they hold up on white.
+_NEON_GLASS_LIGHT: dict[str, str] = {
+    "ACCENT_1": "#2563EB",
+    "ACCENT_2": "#7C3AED",
+    "HIGHLIGHT": "#0891B2",
+    "VOLUME": "#059669",
+    "MODE": "#9333EA",
+    "SOLO": "#D97706",
+    "BACKGROUND": "#E4E9F0",
+    "BACKGROUND_1": "#FFFFFF",
+    "BACKGROUND_2": "#D3DAE4",
+    "BORDER": "#C8D1DD",
+    "RED": "#E11D48",
+    "GREEN": "#059669",
+    "BLUE": "#2563EB",
+    "BLACK": "#000000",
+    "WHITE": "#0F172A",
+    "TEXT_MUTED": "#526072",
+}
+
+_NEON_GLASS_LIGHT_NOTE_COLORS: tuple[str, ...] = (
+    "#059669", "#D97706", "#2563EB", "#9333EA",
+    "#E11D48", "#0891B2", "#EA580C", "#DB2777",
+    "#65A30D", "#64748B",
+    "#0D9488", "#4F46E5", "#CA8A04", "#A855F7",
+    "#0284C7", "#BE185D",
+)
+
 # Cyberpunk - Night City: acid yellow primary on near-black, cyan for data,
 # hot red for frames and alerts, magenta mode, orange solo, warm off-white
 # text. BORDER is a dim red, so panel edges and the visualizer grid read as
@@ -219,6 +284,37 @@ _CYBERPUNK_NOTE_COLORS: tuple[str, ...] = (
     "#B388FF", "#FF6B00",
 )
 
+# Cyberpunk light - corporate daylight (Arasaka lobby, not the street): warm
+# off-white panels framed in black ink, red primary, deep cyan data, and
+# black-on-yellow hazard tags (css/app.css, [data-variant="light"]). No neon
+# haze - glows only read on black.
+_CYBERPUNK_LIGHT: dict[str, str] = {
+    "ACCENT_1": "#D6002A",
+    "ACCENT_2": "#00707E",
+    "HIGHLIGHT": "#00707E",
+    "VOLUME": "#00707E",
+    "MODE": "#B0007A",
+    "SOLO": "#C25E00",
+    "BACKGROUND": "#E6E4DC",
+    "BACKGROUND_1": "#F7F6F1",
+    "BACKGROUND_2": "#D9D6CB",
+    "BORDER": "#EDC3CB",
+    "RED": "#D6002A",
+    "GREEN": "#00845A",
+    "BLUE": "#005FB8",
+    "BLACK": "#000000",
+    "WHITE": "#0B0C10",
+    "TEXT_MUTED": "#565D68",
+}
+
+_CYBERPUNK_LIGHT_NOTE_COLORS: tuple[str, ...] = (
+    "#D6002A", "#00707E", "#B39500", "#00845A",
+    "#B0007A", "#C25E00", "#5A3FD1", "#3A3F47",
+    "#005FB8", "#8A8F99",
+    "#5E8F00", "#C2185B", "#00897B", "#9E7C00",
+    "#7E57C2", "#BF360C",
+)
+
 SKINS: dict[str, Skin] = {
     "default": Skin(
         display_name="Default",
@@ -228,7 +324,7 @@ SKINS: dict[str, Skin] = {
     ),
     "cyberpunk": Skin(
         display_name="Cyberpunk",
-        palettes={"dark": _CYBERPUNK_DARK},
+        palettes={"dark": _CYBERPUNK_DARK, "light": _CYBERPUNK_LIGHT},
         note_colors=_CYBERPUNK_NOTE_COLORS,
         piano=PianoColors("#111216", "#08080B", "#000000", "#000000", border="#2B2A12"),
         # Angular: square everywhere; panels get chamfered corners in CSS.
@@ -243,10 +339,16 @@ SKINS: dict[str, Skin] = {
         hud=True,
         note_style="neon",
         scanlines=True,
+        variant_styles={"light": VariantStyle(
+            note_colors=_CYBERPUNK_LIGHT_NOTE_COLORS,
+            piano=PianoColors("#FFFFFF", "#E9E7E0", "#1A1B20", "#050507", border="#B7B2A4"),
+            neon_glow=False,
+            scanlines=False,
+        )},
     ),
     "neon_glass": Skin(
         display_name="Neon Glass",
-        palettes={"dark": _NEON_GLASS_DARK},
+        palettes={"dark": _NEON_GLASS_DARK, "light": _NEON_GLASS_LIGHT},
         note_colors=_NEON_GLASS_NOTE_COLORS,
         piano=PianoColors("#1C222B", "#12161C", "#07090C", "#000000", border="#2A3340"),
         radius_sm=10,
@@ -260,6 +362,10 @@ SKINS: dict[str, Skin] = {
         neon_glow=True,
         glass=True,
         hud=True,
+        variant_styles={"light": VariantStyle(
+            note_colors=_NEON_GLASS_LIGHT_NOTE_COLORS,
+            piano=PianoColors("#FFFFFF", "#E2E8F0", "#1E293B", "#0F172A", border="#CBD5E1"),
+        )},
     ),
 }
 

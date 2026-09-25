@@ -85,8 +85,8 @@ src/utils/playlist.py      Pure playlist logic: shuffle/repeat navigation, index
                             remove/reorder, folder expansion, .m3u read/write (tested)
 src/utils/song_analysis.py Pure per-song analysis: duration, track count, WWM playable fraction,
                             best_transpose() for auto-fit (tested)
-src/utils/skins.py         Pure skin registry: Skin/PianoColors, SKINS (Default, Cyberpunk,
-                            Neon Glass),
+src/utils/skins.py         Pure skin registry: Skin/PianoColors/VariantStyle, SKINS (Default,
+                            Cyberpunk, Neon Glass - each dark + light),
                             PALETTE_KEYS, CHANNEL_COLORS (default note palette) (tested)
 src/utils/piano_layout.py  Pure 88-key keyboard geometry (white/black key positions) (tested)
 src/utils/app_settings.py  Persisted settings (volume, mode, playlist, selection, theme, skin,
@@ -210,11 +210,18 @@ A `Skin` bundles everything visual that varies: a palette per variant (`"dark"`/
 exactly `PALETTE_KEYS`, 16 note colors, piano key colors, corner radii (`radius_sm/md`),
 body/heading/mono font families, three CSS effect flags, and two canvas options:
 `note_style` (`"gradient"` shaded bars, or `"neon"` tubes — dim fill + bright outline, solid
-while sounding) and `scanlines` (a faint CRT pattern over the visualizer's notes only). `get_state()` sends every skin;
-`js/skin.js#applySkin` turns the active one into CSS variables (`ACCENT_1` → `--accent-1`,
+while sounding) and `scanlines` (a faint CRT pattern over the visualizer's notes only).
+`variant_styles` lets a variant override `note_colors`/`piano`/`neon_glow`/`scanlines`
+(`VariantStyle`, `None` = keep the skin's own) — neons that glow on black wash out on white, so
+the light Cyberpunk/Neon Glass variants swap in deeper note colors and a light piano, and light
+Cyberpunk drops glow and scanlines. `get_state()` sends every skin;
+`js/skin.js#activeSkin` merges the rendered variant's overrides over the skin, and
+`applySkin` turns it into CSS variables (`ACCENT_1` → `--accent-1`,
 fonts as fallback stacks, radii) and sets attributes on `<html>` that `css/app.css` targets:
 `data-skin="<key>"` for one skin's own block (e.g. the whole Night City look is
-`[data-skin="cyberpunk"]` rules at the end of `app.css` — chamfers, glitch, scanlines), plus
+`[data-skin="cyberpunk"]` rules at the end of `app.css` — chamfers, glitch, scanlines),
+`data-variant="dark|light"` for variant tweaks (e.g. `[data-skin="cyberpunk"][data-variant="light"]`
+re-inks `--frame` black and turns off `--neon-text`), plus
 shared effect flags any skin can opt into:
 
 - `neon_glow` — soft outer glows (`box-shadow`/`text-shadow`/`drop-shadow`; canvas `shadowBlur`).
@@ -233,14 +240,19 @@ restarts the `.flicker` animation on change). Its animations are disabled under
 no full-window grain/scanline overlays (they blur all text — an earlier version had one), true
 black surfaces, full-strength 1px lines, tight glows (`--neon-text`), and outlines via inset
 `box-shadow` (it survives `clip-path`, unlike outer shadows and borders on the diagonals).
-Decorative `.hud-label` tags in `index.html` are hidden unless a skin shows them.
+Decorative `.hud-label` tags in `index.html` are hidden unless a skin shows them. The light
+variant is corporate daylight (paper panels, black-ink frames, black-on-yellow hazard tags);
+keep its skin-wide rules driven by the same variables (`--frame`, `--line`, `--neon-text`) rather
+than duplicating selectors.
 
 Category colors are palette roles, not raw accents: `ACCENT_1` playback, `VOLUME` volume and
 track on/off switches, `MODE` the Audio/WWM toggle, `SOLO`, `RED`, with `HIGHLIGHT` as the shared
-gradient tail. Skin and Dark/Light preference are independent: `Skin.resolve_variant()` renders a
-dark-only skin (Cyberpunk, Neon Glass) dark while keeping the saved Light preference; the Theme toggle is
-disabled for single-variant skins. Unknown skin/theme names fall back to defaults. To add a skin,
-add it to `SKINS` with palettes defining exactly `PALETTE_KEYS` (enforced by `tests/test_skins.py`).
+gradient tail. Every shipped skin has both variants (enforced by `tests/test_skins.py`, which
+also checks WCAG contrast of text/accents on panels). Skin and Dark/Light preference are
+independent: `Skin.resolve_variant()` renders a single-variant skin in its only variant while
+keeping the saved preference, and the Theme toggle is disabled for such skins. Unknown skin/theme
+names fall back to defaults. To add a skin, add it to `SKINS` with palettes defining exactly
+`PALETTE_KEYS`.
 
 ## Key mapping model (src/utils/wwm_macro.py)
 

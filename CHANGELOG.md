@@ -24,22 +24,23 @@ All notable changes to this project are documented here.
 - Per-song transpose with one-click auto-fit to WWM's range, remembered per song.
 - Always-on-top mini player to keep over the game.
 - **Skins**: pick the app's look in Settings; it applies live and is remembered between
-  launches. Ships with:
+  launches. Every skin comes in dark and light. Ships with:
   - **Default** (dark or light).
   - **Cyberpunk** — Night City: acid yellow, cyan, and hot red neon on true black; crisp
     chamfered panels with 1px red frames, HUD corner brackets, and panel tags; condensed
     uppercase type; outline buttons that fill on hover; neon-tube notes that light up while
     sounding; slanted LED bars; CRT scanlines on the visualizer only; a hard-edged RGB-split
     glitch on the song title and on hover, and a neon flicker when the song changes (subtle,
-    and off with Windows' reduce-motion).
+    and off with Windows' reduce-motion). Light: corporate daylight — warm paper panels
+    framed in black ink, red and deep cyan, black-on-yellow hazard tags, no neon haze.
   - **Neon Glass** — a dark glass, sci-fi HUD with rounded cards and a glowing neon accent
     per category (blue playback, green volume, purple mode, yellow solo, red alerts).
+    Light: frosted white glass with soft shadows and deeper accents.
 
   Both neon skins add segmented LED progress/volume bars, a telemetry grid and live readouts
   (voices, notes/s, tracks, range, time) in the visualizer, playback/mode status chips, and
   monospaced instrument-style numbers.
-- **Light theme**: a Dark/Light toggle in Settings, remembered between launches. (Dark-only
-  skins like Cyberpunk keep your choice for when you switch back.)
+- **Light theme**: a Dark/Light toggle in Settings, remembered between launches.
 - An empty-state message in the playlist when no songs are loaded.
 
 ### Removed

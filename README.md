@@ -73,20 +73,23 @@ both Audio and WWM mode — mute the drums, solo the melody to learn it, etc.
 
 ### Skins
 
-Pick a look in Settings:
+Pick a look in Settings; every skin has a dark and a light theme:
 
 - **Default** — clean dark or light theme.
 - **Cyberpunk** — Night City: acid yellow, cyan, and red neon on true black;
   crisp chamfered panels with HUD brackets and tags, neon-tube notes that
   light up as they play, slanted LED meters, a CRT-scanlined visualizer, and
   a glitching title. Motion is subtle and turns off when Windows' "reduce
-  animations" setting is on.
+  animations" setting is on. Its light theme is corporate daylight: paper
+  panels framed in black, red and deep cyan, yellow hazard tags.
 - **Neon Glass** — a glowing neon HUD on dark glass, with rounded cards and
-  live readouts.
+  live readouts. Its light theme is frosted white glass.
 
 ![Neon Glass skin](docs/screenshots/neon_glass.png)
 ![Default skin](docs/screenshots/default_skin.png)
 ![Default skin, light theme](docs/screenshots/light_theme.png)
+![Cyberpunk skin, light theme](docs/screenshots/cyberpunk_light.png)
+![Neon Glass skin, light theme](docs/screenshots/neon_glass_light.png)
 
 ### Remappable WWM key bindings
 
