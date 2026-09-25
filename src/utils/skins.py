@@ -78,6 +78,11 @@ class Skin:
         glass: Glassmorphism: a softly lit window backdrop behind
             translucent-looking cards with a subtle top sheen, and the
             visualizer drawn as a rounded card.
+        note_style: How the visualizer draws notes: "gradient" (shaded bars)
+            or "neon" (neon tubes: a bright outline around a dim fill, lit
+            solid while sounding).
+        scanlines: Draw faint CRT scanlines over the visualizer's falling
+            notes (only there - over text they just blur it).
         hud: Sci-fi instrumentation: segmented LED progress/volume bars, a
             telemetry grid and live readouts in the visualizer, status chips,
             and uppercase technical captions.
@@ -95,6 +100,8 @@ class Skin:
     neon_glow: bool = False
     glass: bool = False
     hud: bool = False
+    note_style: str = "gradient"
+    scanlines: bool = False
 
     @property
     def variants(self) -> tuple[str, ...]:
@@ -201,7 +208,7 @@ _CYBERPUNK_DARK: dict[str, str] = {
     "BLUE": "#00F0FF",
     "BLACK": "#000000",
     "WHITE": "#ECE9D8",
-    "TEXT_MUTED": "#807E6C",
+    "TEXT_MUTED": "#8A94A0",
 }
 
 _CYBERPUNK_NOTE_COLORS: tuple[str, ...] = (
@@ -234,6 +241,8 @@ SKINS: dict[str, Skin] = {
         mono_families=("Cascadia Mono", "Consolas"),
         neon_glow=True,
         hud=True,
+        note_style="neon",
+        scanlines=True,
     ),
     "neon_glass": Skin(
         display_name="Neon Glass",

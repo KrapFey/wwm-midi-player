@@ -208,7 +208,9 @@ each sounding out-of-range note folds onto is outlined (`foldNote` mirrors
 
 A `Skin` bundles everything visual that varies: a palette per variant (`"dark"`/`"light"`) with
 exactly `PALETTE_KEYS`, 16 note colors, piano key colors, corner radii (`radius_sm/md`),
-body/heading/mono font families, and three effect flags. `get_state()` sends every skin;
+body/heading/mono font families, three CSS effect flags, and two canvas options:
+`note_style` (`"gradient"` shaded bars, or `"neon"` tubes — dim fill + bright outline, solid
+while sounding) and `scanlines` (a faint CRT pattern over the visualizer's notes only). `get_state()` sends every skin;
 `js/skin.js#applySkin` turns the active one into CSS variables (`ACCENT_1` → `--accent-1`,
 fonts as fallback stacks, radii) and sets attributes on `<html>` that `css/app.css` targets:
 `data-skin="<key>"` for one skin's own block (e.g. the whole Night City look is
@@ -227,7 +229,11 @@ along the diagonals, so a panel's frame color is its own background and its face
 element's own shadows, so glows go on an unclipped parent (`filter: drop-shadow`). The title
 glitch layers read the title from `data-text` (kept in sync by `skin.js#setTitle`, which also
 restarts the `.flicker` animation on change). Its animations are disabled under
-`prefers-reduced-motion`. Bahnschrift is variable, so `font-stretch` condenses it.
+`prefers-reduced-motion`. Bahnschrift is variable, so `font-stretch` condenses it. Keep it crisp:
+no full-window grain/scanline overlays (they blur all text — an earlier version had one), true
+black surfaces, full-strength 1px lines, tight glows (`--neon-text`), and outlines via inset
+`box-shadow` (it survives `clip-path`, unlike outer shadows and borders on the diagonals).
+Decorative `.hud-label` tags in `index.html` are hidden unless a skin shows them.
 
 Category colors are palette roles, not raw accents: `ACCENT_1` playback, `VOLUME` volume and
 track on/off switches, `MODE` the Audio/WWM toggle, `SOLO`, `RED`, with `HIGHLIGHT` as the shared

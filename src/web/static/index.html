@@ -9,6 +9,7 @@
 <body>
   <div class="app">
     <aside class="sidebar card">
+      <span class="hud-label" aria-hidden="true">SYS//PLAYLIST</span>
       <header class="sidebar-header">
         <nav class="tabs" role="tablist">
           <button class="tab active" data-tab="songs" role="tab">Songs</button>
@@ -66,11 +67,13 @@
     </aside>
 
     <main class="stage card">
+      <span class="hud-label" aria-hidden="true">VIS//88-KEY</span>
       <canvas id="visualizer"></canvas>
       <div id="telemetry" class="telemetry"></div>
     </main>
 
     <footer class="now-playing card">
+      <span class="hud-label" aria-hidden="true">AUD//TRANSPORT</span>
       <div class="np-info">
         <div id="np-title" class="np-title glitch" data-text="No files loaded">No files loaded</div>
         <div id="np-artist" class="np-artist"></div>

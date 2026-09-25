@@ -27,6 +27,11 @@ def test_every_skin_has_16_note_colors_and_known_variants(name: str) -> None:
     assert set(skin.variants) <= set(VARIANTS)
 
 
+@pytest.mark.parametrize("name", list(SKINS))
+def test_every_skin_uses_a_known_note_style(name: str) -> None:
+    assert SKINS[name].note_style in {"gradient", "neon"}
+
+
 def test_default_skin_supports_dark_and_light() -> None:
     assert SKINS[DEFAULT_SKIN].variants == ("dark", "light")
 

@@ -26,10 +26,12 @@ All notable changes to this project are documented here.
 - **Skins**: pick the app's look in Settings; it applies live and is remembered between
   launches. Ships with:
   - **Default** (dark or light).
-  - **Cyberpunk** — Night City: acid yellow, cyan, and hot red on black; angular chamfered
-    panels with thin red frames and HUD corner brackets; condensed uppercase type; slanted
-    LED bars; scanlines and film grain; an RGB-split glitch on the song title and on hover,
-    and a neon flicker when the song changes (subtle, and off with Windows' reduce-motion).
+  - **Cyberpunk** — Night City: acid yellow, cyan, and hot red neon on true black; crisp
+    chamfered panels with 1px red frames, HUD corner brackets, and panel tags; condensed
+    uppercase type; outline buttons that fill on hover; neon-tube notes that light up while
+    sounding; slanted LED bars; CRT scanlines on the visualizer only; a hard-edged RGB-split
+    glitch on the song title and on hover, and a neon flicker when the song changes (subtle,
+    and off with Windows' reduce-motion).
   - **Neon Glass** — a dark glass, sci-fi HUD with rounded cards and a glowing neon accent
     per category (blue playback, green volume, purple mode, yellow solo, red alerts).
 

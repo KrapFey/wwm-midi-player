@@ -17,6 +17,13 @@ const NOTE_MIN = 21;
 const NOTE_MAX = 108;
 
 const OUT_OF_RANGE_ALPHA = 0.35;
+// Neon-tube notes (skin.note_style === "neon"): dim fill, bright outline.
+const NEON_FILL_ALPHA = 0.16;
+const NEON_LINE_WIDTH = 1.5;
+const NEON_GLOW_BLUR = 10;
+// Scanlines (skin.scanlines): one dark row every SCANLINE_PERIOD px.
+const SCANLINE_PERIOD = 3;
+const SCANLINE_ALPHA = 0.18;
 const OUT_OF_RANGE_KEY_SHADE = "rgba(0, 0, 0, 0.55)";
 
 const clampNote = (note) => Math.max(NOTE_MIN, Math.min(NOTE_MAX, note));
@@ -50,6 +57,7 @@ export class Visualizer {
     this.palette = null;
     this.muted = new Set();
     this.range = null;
+    this.scanlines = this.makeScanlinePattern();
     this.clear();
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
@@ -79,6 +87,17 @@ export class Visualizer {
   setSkin(skin, palette) {
     this.skin = skin;
     this.palette = palette;
+  }
+
+  /** A tiling pattern of one dark row per period - one fill per frame, not a line per row. */
+  makeScanlinePattern() {
+    const tile = document.createElement("canvas");
+    tile.width = 1;
+    tile.height = SCANLINE_PERIOD;
+    const context = tile.getContext("2d");
+    context.fillStyle = `rgba(0, 0, 0, ${SCANLINE_ALPHA})`;
+    context.fillRect(0, 0, 1, 1);
+    return this.ctx.createPattern(tile, "repeat");
   }
 
   resize() {
@@ -123,6 +142,10 @@ export class Visualizer {
     }
     if (skin.hud) this.drawGrid(position, fallHeight);
     this.drawNotes(visible, position, fallHeight);
+    if (skin.scanlines) {
+      this.ctx.fillStyle = this.scanlines;
+      this.ctx.fillRect(0, 0, width, fallHeight);
+    }
     this.drawHitLine(fallHeight);
     this.drawKeyboard(fallHeight, keyboardHeight, sounding);
     if (this.range) this.drawRange(visible, position, fallHeight, keyboardHeight);
@@ -172,21 +195,37 @@ export class Visualizer {
       const barWidth = keyWidth - margin * 2;
       const color = noteColor(skin.note_colors, track, isDrum);
       const radius = Math.min(BAR_CORNER_RADIUS, skin.radius_sm, barWidth / 2);
-      const gradient = ctx.createLinearGradient(0, top, 0, bottom);
-      gradient.addColorStop(0, darker(color, 125));
-      gradient.addColorStop(1, lighter(color, 135));
+      const sounding = start <= position && position <= end;
       // Only sounding notes glow: haloing every falling bar is the costliest
       // part of a frame on dense songs, and glow reads best as "being hit".
-      const glowing = skin.neon_glow && start <= position && position <= end;
+      const glowing = skin.neon_glow && sounding;
       const folded = this.range && (note < this.range[0] || note > this.range[1]);
       ctx.globalAlpha = folded ? OUT_OF_RANGE_ALPHA : 1;
       ctx.setLineDash(folded ? [3, 3] : []);
+      ctx.beginPath();
+      if (skin.note_style === "neon") {
+        // Neon tube: crisp bright outline around a dim fill; lit solid while
+        // sounding. Inset by half the line width so the stroke stays sharp.
+        const inset = NEON_LINE_WIDTH / 2;
+        ctx.rect(x + inset, top + inset, barWidth - NEON_LINE_WIDTH, bottom - top - NEON_LINE_WIDTH);
+        ctx.shadowBlur = glowing ? NEON_GLOW_BLUR : 0;
+        ctx.shadowColor = glowing ? color : "transparent";
+        ctx.fillStyle = sounding ? color : rgba(color, NEON_FILL_ALPHA);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = sounding ? lighter(color, 130) : color;
+        ctx.lineWidth = NEON_LINE_WIDTH;
+        ctx.stroke();
+        continue;
+      }
+      const gradient = ctx.createLinearGradient(0, top, 0, bottom);
+      gradient.addColorStop(0, darker(color, 125));
+      gradient.addColorStop(1, lighter(color, 135));
       ctx.shadowBlur = glowing ? 14 : 0;
       ctx.shadowColor = glowing ? color : "transparent";
       ctx.fillStyle = gradient;
       ctx.strokeStyle = lighter(color, 160);
       ctx.lineWidth = 1;
-      ctx.beginPath();
       ctx.roundRect(x, top, barWidth, bottom - top, radius);
       ctx.fill();
       ctx.shadowBlur = 0;

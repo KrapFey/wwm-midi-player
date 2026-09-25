@@ -76,10 +76,11 @@ both Audio and WWM mode — mute the drums, solo the melody to learn it, etc.
 Pick a look in Settings:
 
 - **Default** — clean dark or light theme.
-- **Cyberpunk** — Night City: acid yellow and cyan on black, angular
-  chamfered panels with HUD brackets, slanted LED meters, scanlines and film
-  grain, and a glitching title. Motion is subtle and turns off when Windows'
-  "reduce animations" setting is on.
+- **Cyberpunk** — Night City: acid yellow, cyan, and red neon on true black;
+  crisp chamfered panels with HUD brackets and tags, neon-tube notes that
+  light up as they play, slanted LED meters, a CRT-scanlined visualizer, and
+  a glitching title. Motion is subtle and turns off when Windows' "reduce
+  animations" setting is on.
 - **Neon Glass** — a glowing neon HUD on dark glass, with rounded cards and
   live readouts.
 
