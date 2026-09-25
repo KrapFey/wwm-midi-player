@@ -13,6 +13,9 @@
 //   ?error=<text>                 show an error toast
 //   ?notransition                 disable CSS transitions (headless capture
 //                                 can otherwise freeze controls mid-animation)
+//   ?animtime=<ms>                freeze every CSS animation at that time (headless
+//                                 capture doesn't advance them; e.g. 6100 shows the
+//                                 Cyberpunk title glitch)
 
 export async function createMockApi(onEvent) {
   const snapshot = await (await fetch("/mock-state.json")).json();
@@ -47,6 +50,14 @@ export async function createMockApi(onEvent) {
       const rect = song?.getBoundingClientRect();
       song?.dispatchEvent(new MouseEvent("contextmenu", {
         bubbles: true, clientX: rect.left + 120, clientY: rect.top + 20 }));
+    }
+    if (params.has("animtime")) {
+      setTimeout(() => {
+        for (const animation of document.getAnimations()) {
+          animation.pause();
+          animation.currentTime = Number(params.get("animtime"));
+        }
+      }, 200);
     }
     if (params.get("error")) {
       clock = { position: 0, playing: false };

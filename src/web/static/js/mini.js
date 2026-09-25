@@ -4,7 +4,7 @@
 
 import { connectBackend } from "./bridge.js";
 import { Clock, formatTime } from "./clock.js";
-import { applySkin } from "./skin.js";
+import { applySkin, setTitle } from "./skin.js";
 import { Slider } from "./slider.js";
 
 const CLOCK_RESYNC_MS = 1000;
@@ -19,7 +19,7 @@ const clock = new Clock();
 function render() {
   const index = state.now_playing >= 0 ? state.now_playing : state.current;
   const file = state.files[index];
-  $("np-title").textContent = file ? file.title : "No files loaded";
+  setTitle($("np-title"), file ? file.title : "No files loaded");
   $("np-artist").textContent = file ? file.artist : "";
   $("play").classList.toggle("playing", state.playing && !state.paused);
   $("chip-mode").textContent = state.is_audio ? "AUDIO" : "WWM";

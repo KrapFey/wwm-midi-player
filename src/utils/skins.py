@@ -3,7 +3,8 @@
 Pure data, so it's unit-testable. web.api.Api.get_state() sends every skin to
 the page, where web/static/js/skin.js turns the active one into CSS variables
 (each PALETTE_KEYS entry becomes --lower-kebab-case, e.g. ACCENT_1 ->
---accent-1) plus data-glass/data-hud/data-glow attributes.
+--accent-1) plus data-glass/data-hud/data-glow attributes for shared effects
+and data-skin=<key> for skin-specific CSS.
 
 A skin's palettes are keyed by variant ("dark"/"light"). The user's
 Dark/Light preference is kept separately from the skin, so switching to a
@@ -145,11 +146,12 @@ _DEFAULT_LIGHT: dict[str, str] = {
     "TEXT_MUTED": "#666666",
 }
 
-# Neon HUD on dark glass: near-black charcoal, layered cards with thin borders,
-# and one glowing accent per category - blue playback (ACCENT_1), green volume
-# & "live" state (VOLUME/GREEN), purple Audio/WWM mode (MODE), yellow solo
-# (SOLO), red close/errors (RED) - with cyan as the shared gradient tail.
-_CYBERPUNK_DARK: dict[str, str] = {
+# Neon Glass - a neon HUD on dark glass: near-black charcoal, layered cards
+# with thin borders, and one glowing accent per category - blue playback
+# (ACCENT_1), green volume & "live" state (VOLUME/GREEN), purple Audio/WWM
+# mode (MODE), yellow solo (SOLO), red close/errors (RED) - with cyan as the
+# shared gradient tail.
+_NEON_GLASS_DARK: dict[str, str] = {
     "ACCENT_1": "#3B8BFF",
     "ACCENT_2": "#8B5CF6",
     "HIGHLIGHT": "#22D3EE",
@@ -170,12 +172,44 @@ _CYBERPUNK_DARK: dict[str, str] = {
 
 # Tracks cycle through the same category neons (green, yellow, blue, purple,
 # red, ...) so the visualizer reads like the rest of the HUD.
-_CYBERPUNK_NOTE_COLORS: tuple[str, ...] = (
+_NEON_GLASS_NOTE_COLORS: tuple[str, ...] = (
     "#39E58C", "#FACC15", "#3B8BFF", "#A855F7",
     "#FF4D6D", "#22D3EE", "#FB923C", "#F472B6",
     "#84CC16", "#94A3B8",
     "#2DD4BF", "#818CF8", "#FDE047", "#C084FC",
     "#60A5FA", "#FB7185",
+)
+
+# Cyberpunk - Night City: acid yellow primary on near-black, cyan for data,
+# hot red for frames and alerts, magenta mode, orange solo, warm off-white
+# text. BORDER is a dim red, so panel edges and the visualizer grid read as
+# faint red HUD lines. The angular shapes, glitch, and scanlines live in
+# css/app.css under [data-skin="cyberpunk"].
+_CYBERPUNK_DARK: dict[str, str] = {
+    "ACCENT_1": "#FCEE0A",
+    "ACCENT_2": "#00F0FF",
+    "HIGHLIGHT": "#00F0FF",
+    "VOLUME": "#00F0FF",
+    "MODE": "#FF2BD6",
+    "SOLO": "#FF9E00",
+    "BACKGROUND": "#050507",
+    "BACKGROUND_1": "#0B0C10",
+    "BACKGROUND_2": "#1C1D24",
+    "BORDER": "#3B1018",
+    "RED": "#FF003C",
+    "GREEN": "#1AFF8C",
+    "BLUE": "#00F0FF",
+    "BLACK": "#000000",
+    "WHITE": "#ECE9D8",
+    "TEXT_MUTED": "#807E6C",
+}
+
+_CYBERPUNK_NOTE_COLORS: tuple[str, ...] = (
+    "#FCEE0A", "#00F0FF", "#FF003C", "#1AFF8C",
+    "#FF2BD6", "#FF9E00", "#7A5CFF", "#ECE9D8",
+    "#00B3FF", "#807E6C",
+    "#C6FF00", "#FF5C8A", "#00FFC8", "#FFD000",
+    "#B388FF", "#FF6B00",
 )
 
 SKINS: dict[str, Skin] = {
@@ -189,6 +223,22 @@ SKINS: dict[str, Skin] = {
         display_name="Cyberpunk",
         palettes={"dark": _CYBERPUNK_DARK},
         note_colors=_CYBERPUNK_NOTE_COLORS,
+        piano=PianoColors("#111216", "#08080B", "#000000", "#000000", border="#2B2A12"),
+        # Angular: square everywhere; panels get chamfered corners in CSS.
+        radius_sm=0,
+        radius_md=0,
+        # Bahnschrift (Windows 10/11) is a variable font with a width axis,
+        # so the CSS can condense it (font-stretch) for the Night City look.
+        font_families=("Bahnschrift", "Segoe UI"),
+        heading_families=("Bahnschrift", "Segoe UI"),
+        mono_families=("Cascadia Mono", "Consolas"),
+        neon_glow=True,
+        hud=True,
+    ),
+    "neon_glass": Skin(
+        display_name="Neon Glass",
+        palettes={"dark": _NEON_GLASS_DARK},
+        note_colors=_NEON_GLASS_NOTE_COLORS,
         piano=PianoColors("#1C222B", "#12161C", "#07090C", "#000000", border="#2A3340"),
         radius_sm=10,
         radius_md=16,

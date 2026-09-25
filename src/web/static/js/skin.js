@@ -1,5 +1,7 @@
 // Applies the active skin (utils/skins.py, via Api.get_state) to a page as CSS
-// variables + effect attributes. Shared by the main window and the mini player.
+// variables + effect attributes (data-glass/data-hud/data-glow, shared by any
+// skin that opts in) and data-skin=<key> (for one skin's own CSS block).
+// Shared by the main window and the mini player.
 
 const FALLBACK_FONTS = ['"Segoe UI"', "system-ui", "sans-serif"];
 const fontStack = (families) => [...families.map((f) => `"${f}"`), ...FALLBACK_FONTS].join(", ");
@@ -25,5 +27,20 @@ export function applySkin(state) {
   root.toggleAttribute("data-glass", skin.glass);
   root.toggleAttribute("data-hud", skin.hud);
   root.toggleAttribute("data-glow", skin.neon_glow);
+  root.dataset.skin = state.skins[state.skin] ? state.skin : "default";
   return { skin, palette };
+}
+
+/**
+ * Show a song title, restarting its "flicker" animation when the text changes
+ * (skins that style .flicker/.glitch animate it; data-text feeds the glitch
+ * layers, which duplicate the title via CSS content: attr(data-text)).
+ */
+export function setTitle(element, text) {
+  if (element.textContent === text) return;
+  element.textContent = text;
+  element.dataset.text = text;
+  element.classList.remove("flicker");
+  void element.offsetWidth;  // restart the CSS animation
+  element.classList.add("flicker");
 }

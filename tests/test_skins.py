@@ -31,8 +31,9 @@ def test_default_skin_supports_dark_and_light() -> None:
     assert SKINS[DEFAULT_SKIN].variants == ("dark", "light")
 
 
-def test_cyberpunk_is_dark_only() -> None:
-    assert SKINS["cyberpunk"].variants == ("dark",)
+@pytest.mark.parametrize("name", ["cyberpunk", "neon_glass"])
+def test_neon_skins_are_dark_only(name: str) -> None:
+    assert SKINS[name].variants == ("dark",)
 
 
 def test_resolve_variant_honors_supported_preference() -> None:

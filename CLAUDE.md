@@ -85,7 +85,8 @@ src/utils/playlist.py      Pure playlist logic: shuffle/repeat navigation, index
                             remove/reorder, folder expansion, .m3u read/write (tested)
 src/utils/song_analysis.py Pure per-song analysis: duration, track count, WWM playable fraction,
                             best_transpose() for auto-fit (tested)
-src/utils/skins.py         Pure skin registry: Skin/PianoColors, SKINS (Default, Cyberpunk),
+src/utils/skins.py         Pure skin registry: Skin/PianoColors, SKINS (Default, Cyberpunk,
+                            Neon Glass),
                             PALETTE_KEYS, CHANNEL_COLORS (default note palette) (tested)
 src/utils/piano_layout.py  Pure 88-key keyboard geometry (white/black key positions) (tested)
 src/utils/app_settings.py  Persisted settings (volume, mode, playlist, selection, theme, skin,
@@ -198,8 +199,10 @@ A `Skin` bundles everything visual that varies: a palette per variant (`"dark"`/
 exactly `PALETTE_KEYS`, 16 note colors, piano key colors, corner radii (`radius_sm/md`),
 body/heading/mono font families, and three effect flags. `get_state()` sends every skin;
 `js/skin.js#applySkin` turns the active one into CSS variables (`ACCENT_1` → `--accent-1`,
-fonts as fallback stacks, radii) and sets `data-glass` / `data-hud` / `data-glow` on `<html>`, so
-`css/app.css` styles skins with plain attribute selectors:
+fonts as fallback stacks, radii) and sets attributes on `<html>` that `css/app.css` targets:
+`data-skin="<key>"` for one skin's own block (e.g. the whole Night City look is
+`[data-skin="cyberpunk"]` rules at the end of `app.css` — chamfers, glitch, scanlines), plus
+shared effect flags any skin can opt into:
 
 - `neon_glow` — soft outer glows (`box-shadow`/`text-shadow`/`drop-shadow`; canvas `shadowBlur`).
 - `glass` — lit backdrop, translucent `backdrop-filter` cards, rounded visualizer card.
@@ -207,10 +210,18 @@ fonts as fallback stacks, radii) and sets `data-glass` / `data-hud` / `data-glow
   the unmasked parent, since a mask clips an element's own shadow), telemetry grid + live readout
   chips in the visualizer, PLAYING/STANDBY + AUDIO/WWM status chips, uppercase mono captions.
 
+Night City notes: panels are chamfered with `clip-path`, which would cut off a normal border
+along the diagonals, so a panel's frame color is its own background and its face is a 1px-inset
+`::before` clipped to the same shape (`--chamfer` / `--chamfer-inner`); clip-path also clips an
+element's own shadows, so glows go on an unclipped parent (`filter: drop-shadow`). The title
+glitch layers read the title from `data-text` (kept in sync by `skin.js#setTitle`, which also
+restarts the `.flicker` animation on change). Its animations are disabled under
+`prefers-reduced-motion`. Bahnschrift is variable, so `font-stretch` condenses it.
+
 Category colors are palette roles, not raw accents: `ACCENT_1` playback, `VOLUME` volume and
 track on/off switches, `MODE` the Audio/WWM toggle, `SOLO`, `RED`, with `HIGHLIGHT` as the shared
 gradient tail. Skin and Dark/Light preference are independent: `Skin.resolve_variant()` renders a
-dark-only skin (Cyberpunk) dark while keeping the saved Light preference; the Theme toggle is
+dark-only skin (Cyberpunk, Neon Glass) dark while keeping the saved Light preference; the Theme toggle is
 disabled for single-variant skins. Unknown skin/theme names fall back to defaults. To add a skin,
 add it to `SKINS` with palettes defining exactly `PALETTE_KEYS` (enforced by `tests/test_skins.py`).
 
@@ -248,7 +259,8 @@ fresh `--user-data-dir` per run (cached JS otherwise) and `?notransition` (headl
 freeze CSS transitions mid-way). Headless also enforces a ~500px minimum viewport, crops narrower
 captures, and barely advances `requestAnimationFrame` timestamps. `js/mock.js` documents URL
 parameters that set up views (`?tab=`, `?wwm`, `?solo=`, `?click=<id>`, `?contextmenu=<n>`,
-`?keys`, `?error=<text>`; `mini.html` for the mini player). The real JS↔Python bridge can be
+`?keys`, `?error=<text>`, `?animtime=<ms>` to freeze CSS animations at a moment, since
+headless capture doesn't advance them; `mini.html` for the mini player). The real JS↔Python bridge can be
 smoke-tested with `hidden=True` pywebview windows and `evaluate_js` (point `Api` at a temp
 `settings_path` so the user's real settings aren't touched).
 

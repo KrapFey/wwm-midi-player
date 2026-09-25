@@ -8,7 +8,7 @@
 import { connectBackend } from "./bridge.js";
 import { Clock, formatTime } from "./clock.js";
 import { noteColor } from "./color.js";
-import { activeSkin, applySkin } from "./skin.js";
+import { activeSkin, applySkin, setTitle } from "./skin.js";
 import { Slider } from "./slider.js";
 import { Visualizer } from "./visualizer.js";
 
@@ -121,7 +121,7 @@ function songDetails(file) {
 
 function renderNowPlaying() {
   const file = focusFile();
-  $("np-title").textContent = file ? file.title : "No files loaded";
+  setTitle($("np-title"), file ? file.title : "No files loaded");
   $("np-artist").textContent = file ? file.artist : "";
   const playing = state.playing && !state.paused;
   $("play").classList.toggle("playing", playing);

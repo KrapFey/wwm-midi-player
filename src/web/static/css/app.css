@@ -644,3 +644,254 @@ body.mini { background: var(--background); }
 .mini-controls .transport-button.primary svg { width: 18px; height: 18px; }
 .mini-controls .slider { flex: 1; }
 .mini-controls .time { font-size: 11px; }
+
+/* ======================================================================== */
+/* Skin: Cyberpunk (Night City) - everything below is [data-skin="cyberpunk"] */
+/* ======================================================================== */
+
+[data-skin="cyberpunk"] {
+  --cut: 14px;  /* chamfer on panels */
+  --cut-sm: 8px;  /* chamfer on buttons, rows, tags */
+  --frame: color-mix(in srgb, var(--red) 55%, transparent);
+  --chamfer: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  --chamfer-inner: polygon(calc(var(--cut) - 0.4px) 0, 100% 0, 100% calc(100% - var(--cut) + 0.4px),
+    calc(100% - var(--cut) + 0.4px) 100%, 0 100%, 0 calc(var(--cut) - 0.4px));
+  --chamfer-sm: polygon(var(--cut-sm) 0, 100% 0, 100% calc(100% - var(--cut-sm)),
+    calc(100% - var(--cut-sm)) 100%, 0 100%, 0 var(--cut-sm));
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+}
+
+/* Backdrop: black with a faint red HUD grid and a warm glow from the top. */
+[data-skin="cyberpunk"] body {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 0%, rgb(252 238 10 / 0.05), transparent 60%),
+    linear-gradient(rgb(255 0 60 / 0.035) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, rgb(255 0 60 / 0.035) 1px, transparent 1px) 0 0 / 32px 100%,
+    var(--background);
+  font-stretch: 87.5%;  /* Bahnschrift is variable: semi-condensed body text */
+  letter-spacing: 0.02em;
+}
+
+/* Scanlines + film grain over everything, slowly crawling down. The overlay
+   is 90px taller than the window and moves by transform (GPU-composited, no
+   repaints) rather than background-position (a full-window repaint every
+   frame); 90px is a whole number of 3px scanline periods, so the loop is
+   seamless. */
+[data-skin="cyberpunk"] body::after {
+  content: "";
+  position: fixed;
+  inset: -90px 0 0;
+  z-index: 100;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.22) 0 1px, transparent 1px 3px), var(--grain);
+  opacity: 0.5;
+  will-change: transform;
+  animation: cp-scan 12s linear infinite;
+}
+@keyframes cp-scan { to { transform: translateY(90px); } }
+
+/* Panels: chamfered corners with a thin red frame. clip-path would cut a
+   normal border off along the diagonals, so the frame color is the element's
+   own background, and the face is a 1px-inset ::before clipped the same way. */
+[data-skin="cyberpunk"] .card {
+  border: none;
+  border-radius: 0;
+  background: var(--frame);
+  clip-path: var(--chamfer);
+  isolation: isolate;
+}
+[data-skin="cyberpunk"] .card::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--background-1) 94%, var(--accent-1)), var(--background-1) 45%);
+  clip-path: var(--chamfer-inner);
+}
+[data-skin="cyberpunk"] :is(.sidebar, .now-playing, .modal-card) { position: relative; }
+[data-skin="cyberpunk"] .now-playing { margin: 0 0 var(--spacing-md); }
+[data-skin="cyberpunk"] .stage { padding: 1px; }
+[data-skin="cyberpunk"] .stage canvas { clip-path: var(--chamfer-inner); }
+[data-skin="cyberpunk"] :is(.popover, .menu) { --frame: color-mix(in srgb, var(--accent-1) 70%, transparent); }
+[data-skin="cyberpunk"] .toast { --frame: var(--red); }
+
+/* HUD corner brackets on the main panels. */
+[data-skin="cyberpunk"] :is(.sidebar, .stage, .now-playing)::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-top: 2px solid var(--accent-1);
+  border-right: 2px solid var(--accent-1);
+  pointer-events: none;
+}
+
+/* Type: condensed uppercase labels and headings. */
+[data-skin="cyberpunk"] :is(.tab, .np-title, .caption, .chip, .readout, .pill-button, .menu li,
+  .popover-row > span:first-child, .song .title, .keys-octave, .drop-overlay div) {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-stretch: 75%;
+}
+[data-skin="cyberpunk"] .tab.active {
+  color: var(--accent-1);
+  border-bottom-color: var(--accent-1);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-1) 60%, transparent);
+}
+[data-skin="cyberpunk"] .np-title {
+  position: relative;
+  color: var(--accent-1);
+  font-size: 18px;
+}
+[data-skin="cyberpunk"] .np-artist { color: var(--highlight); letter-spacing: 0.06em; }
+[data-skin="cyberpunk"] :is(.empty-icon, .icon-button:hover) { color: var(--accent-1); }
+
+/* Title glitch: cyan and red copies (from data-text) flash sliced and offset
+   for a fraction of a second every few seconds. */
+[data-skin="cyberpunk"] .glitch::before,
+[data-skin="cyberpunk"] .glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  pointer-events: none;
+  opacity: 0;
+}
+[data-skin="cyberpunk"] .glitch::before { color: var(--highlight); animation: cp-glitch-a 6.5s steps(1) infinite; }
+[data-skin="cyberpunk"] .glitch::after { color: var(--red); animation: cp-glitch-b 6.5s steps(1) infinite; }
+@keyframes cp-glitch-a {
+  0%, 92%, 97%, 100% { opacity: 0; translate: 0; clip-path: inset(0); }
+  93% { opacity: 1; translate: -3px 0; clip-path: inset(15% 0 55% 0); }
+  95% { opacity: 1; translate: 2px 0; clip-path: inset(60% 0 10% 0); }
+}
+@keyframes cp-glitch-b {
+  0%, 93%, 98%, 100% { opacity: 0; translate: 0; clip-path: inset(0); }
+  94% { opacity: 1; translate: 3px 0; clip-path: inset(45% 0 25% 0); }
+  96% { opacity: 1; translate: -2px 0; clip-path: inset(5% 0 70% 0); }
+}
+/* Neon flicker when the title changes (skin.js#setTitle restarts it). */
+[data-skin="cyberpunk"] .flicker { animation: cp-flicker 0.55s steps(1) 1; }
+@keyframes cp-flicker {
+  0% { opacity: 0.15; } 15% { opacity: 1; } 30% { opacity: 0.35; } 45% { opacity: 1; }
+  60% { opacity: 0.6; } 75%, 100% { opacity: 1; }
+}
+
+/* Buttons: chamfered, with an RGB-split jitter on hover. */
+[data-skin="cyberpunk"] .transport { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent-1) 35%, transparent)); }
+[data-skin="cyberpunk"] .transport-button {
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  background: color-mix(in srgb, var(--accent-1) 10%, transparent);
+  color: var(--accent-1);
+}
+[data-skin="cyberpunk"] .transport-button.toggle.active { background: color-mix(in srgb, var(--accent-1) 30%, transparent); }
+[data-skin="cyberpunk"] .transport-button.primary {
+  --cut-sm: 12px;
+  width: 64px;
+  height: 48px;
+  background: var(--accent-1);
+  color: var(--background);
+}
+[data-skin="cyberpunk"] :is(.transport-button, .icon-button, .pill-button, .keycap, .solo):hover {
+  transform: none;
+  filter: drop-shadow(2px 0 var(--red)) drop-shadow(-2px 0 var(--highlight));
+  animation: cp-jitter 0.3s steps(2) 1;
+}
+@keyframes cp-jitter { 0% { translate: 2px 0; } 50% { translate: -2px 1px; } 100% { translate: 0; } }
+[data-skin="cyberpunk"] :is(.icon-button, .pill-button, .stepper, .keycap, .solo, .search, select) {
+  border-radius: 0;
+}
+[data-skin="cyberpunk"] :is(.pill-button, .keycap) { clip-path: var(--chamfer-sm); }
+[data-skin="cyberpunk"] .pill-button { border-color: color-mix(in srgb, var(--accent-1) 45%, transparent); }
+[data-skin="cyberpunk"] .solo.active { background: var(--solo); color: var(--background); box-shadow: none; }
+
+/* Search: angular, with a yellow edge. */
+[data-skin="cyberpunk"] .search {
+  border: 1px solid var(--background-2);
+  border-left: 3px solid var(--accent-1);
+  background: rgb(0 0 0 / 0.45);
+}
+
+/* Song rows: clipped corner, yellow bar and fade when selected/playing. */
+[data-skin="cyberpunk"] .song {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+[data-skin="cyberpunk"] .song:hover { background: color-mix(in srgb, var(--highlight) 8%, transparent); }
+[data-skin="cyberpunk"] .song.playing {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-1) 22%, transparent), transparent 85%);
+}
+[data-skin="cyberpunk"] .song.selected::before {
+  width: 4px;
+  border-radius: 0;
+  box-shadow: 0 0 8px var(--accent-1);
+}
+[data-skin="cyberpunk"] :is(.range-badge, .track .swatch) { border-radius: 0; }
+
+/* Switches: square track and knob; the knob goes dark on a lit track. */
+[data-skin="cyberpunk"] .switch span {
+  border-radius: 0;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+[data-skin="cyberpunk"] .switch span::after { border-radius: 0; background: var(--white); }
+[data-skin="cyberpunk"] .switch input:checked + span::after { background: var(--background); }
+
+/* LED bars: taller, slanted segments. */
+[data-skin="cyberpunk"] .slider::before,
+[data-skin="cyberpunk"] .slider-fill { top: 5px; height: 8px; }
+[data-skin="cyberpunk"] .slider::before,
+[data-skin="cyberpunk"] .slider-fill::before {
+  border-radius: 0;
+  -webkit-mask: repeating-linear-gradient(110deg, #000 0 5px, transparent 5px 8px);
+}
+[data-skin="cyberpunk"] .time { color: var(--highlight); }
+
+/* Tags: status chips and HUD readouts as slanted/clipped labels. */
+[data-skin="cyberpunk"] .chip {
+  border: none;
+  border-radius: 0;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  line-height: 18px;
+}
+[data-skin="cyberpunk"] .readout {
+  border: none;
+  border-left: 2px solid var(--readout-color);
+  border-radius: 0;
+  background: rgb(0 0 0 / 0.65);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+}
+[data-skin="cyberpunk"] .readout i { border-radius: 0; }
+
+/* Menus, modal, scrollbars. */
+[data-skin="cyberpunk"] .menu li { border-radius: 0; }
+[data-skin="cyberpunk"] .menu li:hover { background: var(--accent-1); color: var(--background); }
+[data-skin="cyberpunk"] .menu li.danger:hover { background: var(--red); color: var(--white); }
+[data-skin="cyberpunk"] .modal { background: rgb(20 0 6 / 0.72); }
+[data-skin="cyberpunk"] .keycap.capturing { border-color: var(--accent-1); color: var(--accent-1); }
+[data-skin="cyberpunk"] .list::-webkit-scrollbar-thumb { border-radius: 0; }
+[data-skin="cyberpunk"] .drop-overlay div { border-radius: 0; border-color: var(--accent-1); color: var(--accent-1); }
+
+/* Mini player. */
+[data-skin="cyberpunk"] .mini-player {
+  border: 1px solid var(--frame);
+  clip-path: var(--chamfer);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--background-1) 94%, var(--accent-1)), var(--background-1) 50%);
+}
+[data-skin="cyberpunk"] .mini-controls .transport-button.primary { --cut-sm: 8px; width: 44px; height: 34px; }
+
+/* Honor Windows' "reduce motion": keep the look, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="cyberpunk"] *,
+  [data-skin="cyberpunk"] *::before,
+  [data-skin="cyberpunk"] *::after,
+  [data-skin="cyberpunk"] body::after { animation: none !important; }
+}
