@@ -77,6 +77,8 @@ from utils.wwm_macro import KeyManager
 # Headroom (relative dB) applied to the shared synth's output so dense
 # chords/many simultaneous channels at high volume don't sum past 0dBFS.
 SYNTH_GAIN_DB: float = -6.0
+# How often the progress bar re-reads the worker's playback position.
+PROGRESS_POLL_MS: int = 250
 
 
 class Worker(QThread):
@@ -96,7 +98,7 @@ class Worker(QThread):
         synth is a shared, already-started, already-soundfont-loaded Synth
         owned by Player and reused across tracks (required when is_audio);
         Worker never loads a SoundFont or tears the synth down itself, since
-        reloading a 32MB .sf2 on every track change is the expensive part.
+        reloading the ~420MB .sf2 on every track change is the expensive part.
 
         start_offset seeks to that many seconds into the song: run() fast-
         forwards through messages up to that point (still applying
@@ -129,6 +131,10 @@ class Worker(QThread):
         self.__channel_base_volume: list[int] = [100] * 16
         self.__muted_tracks: frozenset[int] = muted_tracks
         self.__start_time: float = 0.0
+        # False until run() has parsed the file and anchored __start_time;
+        # until then elapsed_seconds() reports start_offset instead of
+        # perf_counter() minus an unset (0.0) start time.
+        self.__clock_started: bool = False
         self.__last_song_time: float = start_offset
         self.__start_offset: float = start_offset
 
@@ -166,7 +172,7 @@ class Worker(QThread):
         Returns:
             The current playback position in seconds.
         """
-        if self.__paused:
+        if self.__paused or not self.__clock_started:
             return self.__last_song_time
         return time.perf_counter() - self.__start_time
 
@@ -308,7 +314,10 @@ class Worker(QThread):
             messages: list[PlaybackMessage] = build_playback_messages(player)
             current_song_time: float = .0
             skipping: bool = self.__start_offset > 0.0
-            self.__start_time = time.perf_counter()
+            # Offset by start_offset so elapsed_seconds() already reads the
+            # seek target while fast-forwarding, instead of briefly reading 0.
+            self.__start_time = time.perf_counter() - self.__start_offset
+            self.__clock_started = True
             for pm in messages:
                 if not self.__running:
                     natural_end = False
@@ -404,9 +413,8 @@ class Player(QMainWindow):
         self.__toast: Toast|None = None
         self.__soundfont: Path = resource_path("TOH.sf2")
         self.__synth: tinysoundfont.Synth|None = None
-        self.__current: int = 0
+        self.__current: int = -1
         self.__duration: int = 0
-        self.__seek_offset: float = 0.0
         self.__search: QLineEdit
         self.__songs: Viewer
         self.__now_playing_bar: NowPlayingBar
@@ -513,31 +521,41 @@ class Player(QMainWindow):
 
     @Slot(float)
     def __duration_ready(self, duration: float) -> None:
-        """Set duration and start timer.
+        """Set duration and start the progress poll timer.
 
         Args:
             duration: The track's total duration in seconds.
         """
-        self.__current = int(self.__seek_offset)
-        self.__seek_offset = 0.0
+        self.__current = -1
         self.__duration = int(duration)
         self.__now_playing_bar.set_duration(self.__duration)
         with contextlib.suppress(AttributeError):
             self.__progress_timer.stop()
         self.__progress_timer = QTimer(self)
         self.__progress_timer.timeout.connect(self.__update_progress)
-        self.__progress_timer.start(1_000)
+        self.__progress_timer.start(PROGRESS_POLL_MS)
+        self.__update_progress()
 
     @Slot()
     def __update_progress(self) -> None:
-        """Update progress."""
-        if self.__thread and self.__thread.paused:
+        """Sync the progress bar/time label to the worker's actual playback position.
+
+        Reads Worker.elapsed_seconds() - the same clock the visualizer and
+        the playback loop itself use - instead of counting timer ticks,
+        which drifts behind real playback since QTimer ticks are never
+        exactly 1s apart. Polled faster than once a second so the label
+        turns over close to the real second boundary, but only pushed to
+        the bar when the whole second actually changes, since each
+        setValue() restarts the bar's fill animation.
+        """
+        if self.__thread is None:
             return
-        self.__now_playing_bar.set_current_time(self.__current)
-        if self.__current >= self.__duration:
+        current: int = min(int(self.__thread.elapsed_seconds()), self.__duration)
+        if current != self.__current:
+            self.__current = current
+            self.__now_playing_bar.set_current_time(current)
+        if current >= self.__duration:
             self.__progress_timer.stop()
-            return
-        self.__current += 1
 
     @Slot(list)
     def __on_notes_ready(self, events: list[NoteEvent]) -> None:
@@ -662,7 +680,7 @@ class Player(QMainWindow):
         """Return the shared audio synth, creating and loading it on first use.
 
         Reused across every track change instead of rebuilt per track, since
-        loading the 32MB SoundFont is the expensive part and it never changes.
+        loading the ~420MB SoundFont is the expensive part and it never changes.
 
         Returns:
             The shared, already-started, already-soundfont-loaded synth.
@@ -700,7 +718,6 @@ class Player(QMainWindow):
         self.__clear_toast()
         if start_offset <= 0.0:
             self.__visualizer.clear()
-        self.__seek_offset = start_offset
         self.__now_playing_bar.play_button.change.emit(True)
         self.__songs.set_now_playing_row(self.__current_index)
         is_audio: bool = self.__now_playing_bar.mode_toggle.isChecked()
@@ -903,7 +920,7 @@ class Player(QMainWindow):
         self.__shuffle = checked
 
     def __set_volume(self, value: int) -> None:
-        """Adjust FluidSynth volume gain.
+        """Adjust the running worker's master volume.
 
         Args:
             value: The new master volume, in the MIDI CC7 range (0-127).
@@ -1320,7 +1337,8 @@ class Player(QMainWindow):
             self.__synth.stop()
         return super().closeEvent(event)
 
-if __name__ == "__main__":
+def main() -> None:
+    """Launch the app; also the `wwm-player` console script entry point."""
     app: QApplication = QApplication(sys.argv)
     app.setApplicationName("WWM MIDI Player")
     icon: Path = resource_path("src/input/logo.ico")
@@ -1328,3 +1346,6 @@ if __name__ == "__main__":
     window: Player = Player()
     window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()

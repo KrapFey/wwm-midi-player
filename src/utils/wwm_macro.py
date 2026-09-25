@@ -39,6 +39,39 @@ def fold_note(note: int, note_min: int = NOTE_MIN, note_max: int = NOTE_MAX) -> 
     return note
 
 
+def merge_keybindings(defaults: dict[str, dict[str, str]],
+                      loaded: object) -> dict[str, dict[str, str]]:
+    """Overlay user-saved keybindings onto the defaults, ignoring anything malformed.
+
+    A saved file that isn't a {octave: {degree: key}} mapping, or that is
+    missing octaves/degrees (e.g. hand-edited, or written by an older
+    version), would otherwise raise KeyError the first time the note map is
+    built. Only non-empty string keys for octave/degree pairs the defaults
+    already define are taken from loaded; everything else keeps its default.
+
+    Args:
+        defaults: The built-in keybindings, as {octave: {degree: key}}.
+        loaded: The raw JSON-decoded contents of the saved keybindings file,
+            or None if there is no usable file.
+
+    Returns:
+        A fresh {octave: {degree: key}} dict with every default
+        octave/degree present.
+    """
+    merged: dict[str, dict[str, str]] = deepcopy(defaults)
+    if not isinstance(loaded, dict):
+        return merged
+    for octave, degrees in merged.items():
+        saved: object = loaded.get(octave)
+        if not isinstance(saved, dict):
+            continue
+        for degree in degrees:
+            key: object = saved.get(degree)
+            if isinstance(key, str) and key:
+                degrees[degree] = key
+    return merged
+
+
 class KeyManager(metaclass=Singleton):
     """WWM Key binding manager."""
 
@@ -155,16 +188,19 @@ class KeyManager(metaclass=Singleton):
         self.__save_keybindings()
 
     def __load_keybindings(self) -> None:
-        """Load save keybindings."""
-        if not self.__cache.exists():
-            self.__bindings = deepcopy(self.__default_bindings)
-            return
-        with self.__cache.open() as f:
-            self.__bindings = json.load(f)
+        """Load saved keybindings, falling back to defaults if missing or invalid."""
+        loaded: object = None
+        if self.__cache.exists():
+            try:
+                with self.__cache.open(encoding="utf-8") as f:
+                    loaded = json.load(f)
+            except (OSError, ValueError):  # ValueError covers JSONDecodeError/UnicodeDecodeError
+                loaded = None
+        self.__bindings = merge_keybindings(self.__default_bindings, loaded)
 
     def __save_keybindings(self) -> None:
         """Save current keybinding."""
-        with self.__cache.open("w") as f:
+        with self.__cache.open("w", encoding="utf-8") as f:
             json.dump(self.__bindings, f, indent=4)
 
     def __build_map(self) -> None:

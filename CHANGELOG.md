@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Light theme**: a Dark/Light toggle in Settings that restyles the whole app live, and is
+  remembered between launches.
+- An empty-state message in the playlist when no songs are loaded.
+- A clear button in the song search box.
+- Scrollbars styled to match the active theme.
+
+### Fixed
+
+- The elapsed-time label and progress bar slowly drifting out of sync with actual playback
+  (and with the visualizer) on longer songs.
+- A corrupt or incomplete `keybindings.json` breaking WWM mode; missing or invalid entries now
+  fall back to the default keybinds.
+- The `wwm-player` console command failing to start the app.
+
 ## [2.0.0] - 2026-08-22
 
 ### Added
