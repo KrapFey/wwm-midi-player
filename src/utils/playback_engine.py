@@ -35,7 +35,10 @@ SYNTH_GAIN_DB: float = -6.0
 # on the SoundFont's layering), audibly cutting still-sounding notes. Raised
 # well above what any real MIDI file needs concurrently.
 SYNTH_MAX_VOICES: int = 1024
-GAME_WINDOW_TITLE: str = "Where Winds Meet"
+GAME_NAME: str = "Where Winds Meet"
+# The game window's title: the current client (wwm.exe) titles it with the
+# game's internal name, older builds used the display name.
+GAME_WINDOW_TITLES: tuple[str, ...] = ("yysls", GAME_NAME)
 # Longest single sleep while waiting for the next note: long rests are slept
 # in chunks this size so pause/stop take effect within it, not at the next note.
 MAX_SLEEP_SECONDS: float = 0.02
@@ -340,9 +343,10 @@ class PlaybackEngine:
         synth: tinysoundfont.Synth|None = self.__synth
         handle: int = 0
         if not self.__is_audio:
-            handle = win32gui.FindWindow(None, GAME_WINDOW_TITLE)
+            handle = next(filter(None, (win32gui.FindWindow(None, title)
+                                        for title in GAME_WINDOW_TITLES)), 0)
             if not handle:
-                self.__callbacks.on_error(f"{GAME_WINDOW_TITLE} is not running.\n"
+                self.__callbacks.on_error(f"{GAME_NAME} is not running.\n"
                                           "Please run the game then try again.")
                 return
         elif synth is not None:
