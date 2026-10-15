@@ -83,6 +83,10 @@ from utils.wwm_macro import KeyManager
 SYNTH_GAIN_DB: float = -6.0
 # How often the progress bar re-reads the worker's playback position.
 PROGRESS_POLL_MS: int = 250
+GAME_NAME: str = "Where Winds Meet"
+# The game window's title: the current client (wwm.exe) titles it with the
+# game's internal name, older builds used the display name.
+GAME_WINDOW_TITLES: tuple[str, ...] = ("yysls", GAME_NAME)
 
 
 class Worker(QThread):
@@ -299,9 +303,10 @@ class Worker(QThread):
         synth: tinysoundfont.Synth|None = self.__synth
         handle: int = 0
         if not self.__is_audio:
-            handle = win32gui.FindWindow(None, "Where Winds Meet")
+            handle = next(filter(None, (win32gui.FindWindow(None, title)
+                                        for title in GAME_WINDOW_TITLES)), 0)
             if not handle:
-                self.error.emit("Where Winds Meet is not running.\n"
+                self.error.emit(f"{GAME_NAME} is not running.\n"
                                 "Please run the game then try again.")
                 return
         elif synth is not None:
